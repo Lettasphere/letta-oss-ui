@@ -27,7 +27,6 @@ dist-electron
 .env
 
 # Package manager
-bun.lock
 
 # Letta
 .letta/
