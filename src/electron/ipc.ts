@@ -26,6 +26,7 @@ import {
   writeMemoryFile,
 } from "./libs/memory.js";
 import { connectProvider, disconnectProvider, listModels, listProviders } from "./libs/providers.js";
+import { getConversationEnv, listComputers, setConversationEnv } from "./libs/env.js";
 import { getSettings, updateSettings } from "./libs/settings.js";
 import { describeError } from "./libs/transcript.js";
 import { validateEventFrame } from "./util.js";
@@ -44,6 +45,9 @@ export function broadcast(event: AppEvent): void {
 
 const handlers: Handlers = {
   getSettings,
+  listComputers: () => listComputers(),
+  getConversationEnv,
+  setConversationEnv: (input) => setConversationEnv(input.conversationId, input.selector),
   updateSettings: (update) => {
     const { connectionChanged } = updateSettings(update);
     if (update.permissionMode) applyPermissionMode();

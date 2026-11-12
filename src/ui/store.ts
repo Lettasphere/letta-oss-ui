@@ -6,6 +6,8 @@ import type {
   AppEvent,
   AppSettings,
   ApprovalDecision,
+  ComputerSelectorField,
+  ComputerSummary,
   ApprovalRequest,
   ChatRow,
   ChatTextRow,
@@ -18,6 +20,18 @@ import type {
 } from "./types";
 
 const api = window.bridge;
+
+function labelForComputer(
+  selector: ComputerSelectorField,
+  computers: ComputerSummary[],
+): string {
+  const byDevice = new Map(
+    computers.map((computer) => [JSON.stringify({ deviceId: computer.deviceId }), computer.name]),
+  );
+  const key = JSON.stringify(selector);
+  const asName = typeof selector === "string" ? selector : selector && "name" in selector ? selector.name : null;
+  return byDevice.get(key) ?? asName ?? "the selected computer";
+}
 
 /** Key for the chat that has not been sent yet. */
 export const NEW_CHAT = "new";
@@ -64,6 +78,10 @@ type AppState = {
   agentsLoaded: boolean;
   agentId: string | null;
   models: ModelOption[];
+  /** Computers for the environment picker (cloud only; loaded lazily). */
+  computers: ComputerSummary[];
+  computersLoading: boolean;
+  computersError: string | null;
   /** null until loaded, or when the backend manages providers itself. */
   providers: ProviderSummary[] | null;
   /** What the main area shows for the selected agent. */
@@ -79,6 +97,9 @@ type AppState = {
   /** Working directory and model picked in the composer but not yet sent. */
   cwdOverrides: Record<string, string>;
   modelOverrides: Record<string, string>;
+  /** Environment pick per conversation (and NEW_CHAT staging): null = Cloud
+   * Sandbox, object = a computer; absent = no explicit choice. */
+  envOverrides: Record<string, ComputerSelectorField | null>;
   /** The first message of a new chat, shown while its conversation is created. */
   pendingFirstMessage: ChatTextRow | null;
   notice: string | null;
@@ -119,6 +140,10 @@ type AppState = {
   pickCwd: () => Promise<void>;
   setCwd: (cwd: string) => void;
   setModel: (handle: string) => void;
+  /** Load the account's computers for the environment picker (cloud only). */
+  refreshComputers: () => Promise<void>;
+  /** Pick where the active conversation runs: null = the app server (this computer). */
+  pickEnvironment: (selector: ComputerSelectorField | null) => void;
   setDraft: (text: string) => void;
   setNotice: (notice: string | null) => void;
   setSettingsOpen: (open: boolean) => void;
@@ -153,6 +178,9 @@ const CLEARED = {
   agentsLoaded: false,
   agentId: null,
   models: [],
+  computers: [],
+  computersLoading: false,
+  computersError: null,
   providers: null,
   view: "chat",
   memory: null,
@@ -170,6 +198,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   drafts: {},
   cwdOverrides: {},
   modelOverrides: {},
+  envOverrides: {},
   notice: null,
   settingsOpen: false,
   settingsTab: "connection",
@@ -407,6 +436,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const pickedModel = state.modelOverrides[key];
     const currentModel = state.conversations.find((item) => item.id === activeId)?.model;
     const model = pickedModel && pickedModel !== currentModel ? pickedModel : undefined;
+    const pickedEnv = key in state.envOverrides ? state.envOverrides[key] : undefined;
 
     const clearComposer = (id: string) => (current: AppState) => {
       const drafts = { ...current.drafts };
@@ -415,7 +445,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       delete drafts[id];
       delete cwdOverrides[id];
       delete modelOverrides[id];
-      return { drafts, cwdOverrides, modelOverrides };
+      const envOverrides = { ...current.envOverrides };
+      delete envOverrides[id];
+      return { drafts, cwdOverrides, modelOverrides, envOverrides };
     };
 
     if (activeId) {
@@ -440,6 +472,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         otid,
         cwd,
         ...(model ? { model } : {}),
+        ...(pickedEnv !== undefined ? { computer: pickedEnv ?? undefined } : {}),
       });
       set((current) => ({
         conversations: upsertConversation(current.conversations, {
@@ -603,6 +636,38 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({
       cwdOverrides: { ...state.cwdOverrides, [state.activeId ?? NEW_CHAT]: cwd },
     })),
+
+  refreshComputers: async () => {
+    set({ computersLoading: true, computersError: null });
+    try {
+      set({ computers: await api.listComputers(), computersLoading: false });
+    } catch (error) {
+      set({
+        computers: [],
+        computersLoading: false,
+        computersError: errorMessage(error),
+      });
+    }
+  },
+
+  pickEnvironment: (selector) => {
+    const key = get().activeId ?? NEW_CHAT;
+    if (key !== NEW_CHAT && get().chats[key]?.running) {
+      set({ notice: "Wait for the current run to finish before changing the environment." });
+      return;
+    }
+    if (key !== NEW_CHAT) {
+      // Persist immediately for existing conversations; per-turn sessions
+      // apply it on the next send.
+      void api.setConversationEnv({ conversationId: key, selector }).catch((error) => {
+        set({ notice: errorMessage(error) });
+      });
+    }
+    set((state) => ({
+      envOverrides: { ...state.envOverrides, [key]: selector },
+      notice: `Runs in this conversation now use ${selector ? labelForComputer(selector, state.computers) : "the app server on this computer"}.`,
+    }));
+  },
 
   setModel: (handle) =>
     set((state) => ({

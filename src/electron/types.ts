@@ -51,12 +51,16 @@ export type ConnectionState =
     }
   | { status: "error"; backend: BackendKind; error: string };
 
+import type { ComputerSummary, ComputerSelectorField, ConversationEnv } from "./libs/env.js";
+export type { ComputerSummary, ComputerSelectorField, ConversationEnv };
+
 export type AgentSummary = {
   id: string;
   name: string;
   description: string | null;
   model: string | null;
 };
+
 
 export type AgentDetails = AgentSummary & {
   /** The agent's full system prompt. */
@@ -188,6 +192,8 @@ export type SendMessageInput = {
   otid: string;
   cwd: string;
   model?: string;
+  /** Execution target for the turn's session: a computer selector. */
+  computer?: import("@letta-ai/letta-agent-sdk").ComputerSelector;
 };
 
 /** Main -> renderer push events. */
@@ -207,6 +213,12 @@ export type AppEvent =
 export type AppRequests = {
   getSettings(): AppSettings;
   updateSettings(update: SettingsUpdate): AppSettings;
+  listComputers(): ComputerSummary[];
+  getConversationEnv(conversationId: string): ConversationEnv;
+  setConversationEnv(input: {
+    conversationId: string;
+    selector: ComputerSelectorField | null;
+  }): ConversationEnv;
   getConnection(): ConnectionState;
   reconnect(): ConnectionState;
   listAgents(): AgentSummary[];

@@ -34,6 +34,7 @@ import {
   rememberCwd,
   setAgentId,
 } from "./settings.js";
+import { sessionComputerOption } from "./env.js";
 import { describeError, mergeHistory, projectHistory, toChatRow } from "./transcript.js";
 
 /**
@@ -184,7 +185,7 @@ async function connect(): Promise<LettaAgentClient> {
   }
 }
 
-function ensureClient(): Promise<LettaAgentClient> {
+export function ensureClient(): Promise<LettaAgentClient> {
   if (client) return Promise.resolve(client);
   connecting ??= connect().finally(() => {
     connecting = null;
@@ -507,6 +508,9 @@ export async function sendMessage(input: SendMessageInput): Promise<Conversation
       cwd: input.cwd,
       permissionMode: getPermissionMode(),
       ...(input.model ? { model: input.model } : {}),
+      ...((input.computer ?? sessionComputerOption(conversation.id))
+        ? { computer: (input.computer ?? sessionComputerOption(conversation.id))! }
+        : {}),
       canUseTool: (toolName, toolInput, context) =>
         new Promise<CanUseToolResponse>((resolve) => {
           const request: ApprovalRequest = {

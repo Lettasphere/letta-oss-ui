@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { EMPTY_CHAT, NEW_CHAT, selectCwd, useAppStore } from "../store";
 import type { ChatRow } from "../types";
 import { ApprovalPanel } from "./ApprovalPanel";
+import { EnvironmentPicker } from "./EnvironmentPicker";
 import { Composer } from "./Composer";
 import { TranscriptRow } from "./Transcript";
 import { ArrowDownIcon, Spinner } from "./icons";
@@ -189,10 +190,14 @@ export function ChatView() {
 
   return (
     <main className="relative flex min-w-0 flex-1 flex-col bg-surface">
-      <header className="app-drag flex h-12 shrink-0 items-center justify-center border-b border-border px-6">
+      <header className="app-drag flex h-12 shrink-0 items-center justify-between border-b border-border px-6">
+        <span className="w-24" />
         <span className="truncate text-sm font-medium text-ink-700">
           {activeId ? title || "New chat" : "New chat"}
         </span>
+        <div className="flex w-24 justify-end">
+          <EnvironmentPicker conversationId={activeId} />
+        </div>
       </header>
 
       <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
