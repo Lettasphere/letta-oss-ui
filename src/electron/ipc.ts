@@ -27,6 +27,7 @@ import {
 } from "./libs/memory.js";
 import { connectProvider, disconnectProvider, listModels, listProviders } from "./libs/providers.js";
 import { getSettings, updateSettings } from "./libs/settings.js";
+import { ensureSharedServer, setSharedServerEnabled, sharedServerStatus } from "./libs/shared-server.js";
 import { describeError } from "./libs/transcript.js";
 import { validateEventFrame } from "./util.js";
 
@@ -44,6 +45,12 @@ export function broadcast(event: AppEvent): void {
 
 const handlers: Handlers = {
   getSettings,
+  getSharedServer: () => sharedServerStatus(),
+  setSharedServer: async (enabled) => {
+    setSharedServerEnabled(enabled);
+    if (enabled) await ensureSharedServer();
+    return sharedServerStatus();
+  },
   updateSettings: (update) => {
     const { connectionChanged } = updateSettings(update);
     if (update.permissionMode) applyPermissionMode();
