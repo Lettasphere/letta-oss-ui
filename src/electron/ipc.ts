@@ -2,6 +2,7 @@ import { BrowserWindow, dialog, ipcMain } from "electron";
 import type { AppEvent, AppRequests } from "./types.js";
 import {
   applyPermissionMode,
+  ensureClient,
   archiveConversation,
   createAgent,
   deleteAgent,
@@ -26,6 +27,7 @@ import {
   writeMemoryFile,
 } from "./libs/memory.js";
 import { connectProvider, disconnectProvider, listModels, listProviders } from "./libs/providers.js";
+import { getConversationEnv, listComputers, setConversationEnv } from "./libs/env.js";
 import { getSettings, updateSettings } from "./libs/settings.js";
 import { describeError } from "./libs/transcript.js";
 import { validateEventFrame } from "./util.js";
@@ -44,6 +46,9 @@ export function broadcast(event: AppEvent): void {
 
 const handlers: Handlers = {
   getSettings,
+  listComputers: async () => listComputers(await ensureClient()),
+  getConversationEnv,
+  setConversationEnv: (input) => setConversationEnv(input.conversationId, input.selector),
   updateSettings: (update) => {
     const { connectionChanged } = updateSettings(update);
     if (update.permissionMode) applyPermissionMode();

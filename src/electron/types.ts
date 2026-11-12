@@ -51,12 +51,16 @@ export type ConnectionState =
     }
   | { status: "error"; backend: BackendKind; error: string };
 
+import type { ComputerSummary, ComputerSelectorField, ConversationEnv } from "./libs/env.js";
+export type { ComputerSummary, ComputerSelectorField, ConversationEnv };
+
 export type AgentSummary = {
   id: string;
   name: string;
   description: string | null;
   model: string | null;
 };
+
 
 export type AgentDetails = AgentSummary & {
   /** The agent's full system prompt. */
@@ -207,6 +211,12 @@ export type AppEvent =
 export type AppRequests = {
   getSettings(): AppSettings;
   updateSettings(update: SettingsUpdate): AppSettings;
+  listComputers(): ComputerSummary[];
+  getConversationEnv(conversationId: string): ConversationEnv;
+  setConversationEnv(input: {
+    conversationId: string;
+    selector: ComputerSelectorField | null;
+  }): ConversationEnv;
   getConnection(): ConnectionState;
   reconnect(): ConnectionState;
   listAgents(): AgentSummary[];
