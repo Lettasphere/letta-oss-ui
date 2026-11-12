@@ -71,6 +71,9 @@ function createBridge() {
     stopTurn: vi.fn(),
     respondApproval: vi.fn(),
     selectDirectory: vi.fn(),
+    listComputers: vi.fn(),
+    getConversationEnv: vi.fn(),
+    setConversationEnv: vi.fn(),
   } satisfies Record<keyof AppBridge, unknown>;
 }
 
