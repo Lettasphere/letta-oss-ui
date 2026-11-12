@@ -3,6 +3,17 @@ import type { AppBridge, AppEvent, AppRequests } from "./types.js" with { "resol
 
 const METHODS = [
   "getSettings",
+  "listComputers",
+  "getConversationEnv",
+  "setConversationEnv",
+  "getExecutionMode",
+  "getRemoteEnvName",
+  "listRemoteDirectory",
+  "clearBrowseCache",
+  "getConversationCwd",
+  "setRemoteEnvName",
+  "setExecutionMode",
+  "getRemoteEnvStatus",
   "updateSettings",
   "getConnection",
   "reconnect",

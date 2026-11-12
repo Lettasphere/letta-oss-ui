@@ -26,7 +26,10 @@ import {
   writeMemoryFile,
 } from "./libs/memory.js";
 import { connectProvider, disconnectProvider, listModels, listProviders } from "./libs/providers.js";
-import { getSettings, updateSettings } from "./libs/settings.js";
+import { getConversationCwd, getSettings, load, save, updateSettings } from "./libs/settings.js";
+import { getConversationEnv, listComputers, setConversationEnv } from "./libs/env.js";
+import { clearBrowseCache, listRemoteDirectory, setBrowseAgent } from "./libs/remote-browse.js";
+import { defaultRemoteEnvName, ensureRemoteEnv, remoteEnvState, stopRemoteEnv } from "./libs/remote-env.js";
 import { describeError } from "./libs/transcript.js";
 import { validateEventFrame } from "./util.js";
 
@@ -44,6 +47,43 @@ export function broadcast(event: AppEvent): void {
 
 const handlers: Handlers = {
   getSettings,
+  listComputers: () => listComputers(),
+  getConversationEnv,
+  setConversationEnv: (input) => setConversationEnv(input.conversationId, input.selector),
+  getExecutionMode: () => load().executionMode ?? "local",
+  getRemoteEnvName: () => load().remoteEnvName ?? "",
+  listRemoteDirectory: async (input) => {
+    setBrowseAgent(load().agentIds?.cloud ?? load().agentIds?.local ?? "");
+    return listRemoteDirectory(input.selector, input.path);
+  },
+  clearBrowseCache: () => clearBrowseCache(),
+  getConversationCwd: (conversationId) => getConversationCwd(conversationId),
+  setRemoteEnvName: (input) => {
+    const stored = load();
+    save({ ...stored, remoteEnvName: input.name.trim() || defaultRemoteEnvName() });
+    // A renamed registration restarts so the new name takes effect cleanly.
+    stopRemoteEnv();
+    if ((load().executionMode ?? "local") === "remote-env") {
+      ensureRemoteEnv({
+        ...(stored.apiKey && !stored.apiKey.startsWith("enc:") ? { LETTA_API_KEY: stored.apiKey } : {}),
+      });
+    }
+    return load().remoteEnvName ?? "";
+  },
+  setExecutionMode: (mode) => {
+    const stored = load();
+    save({ ...stored, executionMode: mode });
+    if (mode === "remote-env") {
+      const config = { ...stored };
+      ensureRemoteEnv({
+        ...(config.apiKey ? { LETTA_API_KEY: decodeStoredSecret(config.apiKey) } : {}),
+      });
+    }
+    if (mode !== "remote-env") stopRemoteEnv();
+    void reconnect();
+    return mode;
+  },
+  getRemoteEnvStatus: () => remoteEnvStatusSafe(),
   updateSettings: (update) => {
     const { connectionChanged } = updateSettings(update);
     if (update.permissionMode) applyPermissionMode();
@@ -83,6 +123,17 @@ const handlers: Handlers = {
     return result.canceled ? null : (result.filePaths[0] ?? null);
   },
 };
+
+function decodeStoredSecret(encoded: string | undefined): string | undefined {
+  if (!encoded) return undefined;
+  // settings stores enc:-prefixed safeStorage blobs; the plain fallback is used as-is.
+  return encoded.startsWith("enc:") ? undefined : encoded;
+}
+
+function remoteEnvStatusSafe() {
+  const s = remoteEnvState();
+  return { running: s.running, effectiveName: s.effectiveName, connectionId: s.connectionId };
+}
 
 export function registerIpc(): void {
   for (const [name, handler] of Object.entries(handlers)) {

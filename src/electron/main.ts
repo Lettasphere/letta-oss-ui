@@ -175,7 +175,16 @@ if (!app.requestSingleInstanceLock()) {
     });
   });
 
-  app.on("window-all-closed", () => {
+  app.on("will-quit", () => {
+  // The remote registration is tied to the app's life (execution-mode setting).
+  try {
+    require("./libs/remote-env.js").stopRemoteEnv();
+  } catch {
+    // module not loaded — nothing to stop
+  }
+});
+
+app.on("window-all-closed", () => {
     if (!isMac) app.quit();
   });
 

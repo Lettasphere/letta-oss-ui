@@ -40,6 +40,9 @@ export type SettingsUpdate = {
   agentId?: string | null;
 };
 
+import type { ComputerSummary, ComputerSelectorField, ConversationEnv } from "./libs/env.js";
+export type { ComputerSummary, ComputerSelectorField, ConversationEnv };
+
 export type ConnectionState =
   | { status: "connecting"; backend: BackendKind }
   | {
@@ -188,6 +191,8 @@ export type SendMessageInput = {
   otid: string;
   cwd: string;
   model?: string;
+  /** Execution target for this turn: a computer selector (sandbox = omit). */
+  computer?: import("@letta-ai/letta-agent-sdk").ComputerSelector;
 };
 
 /** Main -> renderer push events. */
@@ -204,8 +209,30 @@ export type AppEvent =
   | { type: "menu"; command: "new-chat" | "settings" };
 
 /** Renderer -> main requests. Every method is an `ipcRenderer.invoke` round trip. */
+export type ExecutionMode = "local" | "remote-env" | "cloud-only";
+
+export type RemoteEnvStatus = { running: boolean; effectiveName: string | null; connectionId: string | null };
+
 export type AppRequests = {
   getSettings(): AppSettings;
+  listComputers(): ComputerSummary[];
+  getConversationEnv(conversationId: string): ConversationEnv;
+  setConversationEnv(input: {
+    conversationId: string;
+    selector: ComputerSelectorField | null;
+  }): ConversationEnv;
+  getExecutionMode(): ExecutionMode;
+  getRemoteEnvName(): string;
+  listRemoteDirectory(input: {
+    /** null = the SDK-managed sandbox; else a computer selector. */
+    selector: import("@letta-ai/letta-agent-sdk").ComputerSelector | null;
+    path: string;
+  }): string[];
+  getConversationCwd(conversationId: string): string | null;
+  clearBrowseCache(): void;
+  setRemoteEnvName(input: { name: string }): string;
+  setExecutionMode(mode: ExecutionMode): ExecutionMode;
+  getRemoteEnvStatus(): RemoteEnvStatus;
   updateSettings(update: SettingsUpdate): AppSettings;
   getConnection(): ConnectionState;
   reconnect(): ConnectionState;

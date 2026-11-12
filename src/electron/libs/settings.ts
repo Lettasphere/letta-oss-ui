@@ -13,7 +13,7 @@ import type { AppSettings, BackendKind, PermissionMode, SettingsUpdate } from ".
  * development.
  */
 
-type StoredSettings = {
+export type StoredSettings = {
   backend?: BackendKind;
   serverUrl?: string;
   apiBaseUrl?: string;
@@ -23,6 +23,11 @@ type StoredSettings = {
   agentIds?: Partial<Record<BackendKind, string>>;
   recentCwds?: string[];
   conversationCwds?: Record<string, string>;
+  sharedServer?: { enabled: boolean; port: number };
+  conversationEnvs?: Record<string, import("@letta-ai/letta-agent-sdk").ComputerSelector | null>;
+  executionMode?: "local" | "remote-env" | "cloud-only";
+  /** Custom registration name for the app-spawned letta remote (default: hostname). */
+  remoteEnvName?: string;
 };
 
 export type ConnectionConfig = {
@@ -44,7 +49,7 @@ function settingsPath(): string {
   return join(app.getPath("userData"), "settings.json");
 }
 
-function load(): StoredSettings {
+export function load(): StoredSettings {
   if (cache) return cache;
   try {
     cache = JSON.parse(readFileSync(settingsPath(), "utf8")) as StoredSettings;
@@ -54,7 +59,7 @@ function load(): StoredSettings {
   return cache;
 }
 
-function save(next: StoredSettings): void {
+export function save(next: StoredSettings): void {
   cache = next;
   const path = settingsPath();
   mkdirSync(dirname(path), { recursive: true });

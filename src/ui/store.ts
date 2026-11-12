@@ -6,6 +6,8 @@ import type {
   AppEvent,
   AppSettings,
   ApprovalDecision,
+  ComputerSelectorField,
+  ComputerSummary,
   ApprovalRequest,
   ChatRow,
   ChatTextRow,
@@ -18,6 +20,39 @@ import type {
 } from "./types";
 
 const api = window.bridge;
+
+/**
+ * The effective execution environment for the active conversation:
+ * "local-app" (private app server), "sandbox", or a computer descriptor.
+ * Explicit pick wins; otherwise the execution-mode default applies.
+ */
+// Return values must be referentially STABLE across calls — useSyncExternalStore
+// re-renders on every new object reference (getSnapshot caching contract).
+// So: strings/null only; the deviceId itself is read separately where needed.
+export function selectEffectiveEnvironment(state: {
+  activeId: string | null;
+  envOverrides: Record<string, ComputerSelectorField | null>;
+}): "local-app" | "sandbox" | "remote" | null {
+  const key = state.activeId ?? NEW_CHAT;
+  const override = key in state.envOverrides ? state.envOverrides[key] : undefined;
+  if (override === null) return "sandbox";
+  if (override === undefined) return null; // caller applies the mode default
+  // Any explicit selector (string name or object) means a remote computer.
+  return "remote";
+}
+
+function labelForComputer(
+  selector: ComputerSelectorField,
+  computers: ComputerSummary[],
+): string {
+  const byDevice = new Map(
+    computers.map((computer) => [JSON.stringify({ deviceId: computer.deviceId }), computer.name]),
+  );
+  const key = JSON.stringify(selector);
+  const asName =
+    typeof selector === "string" ? selector : selector && "name" in selector ? selector.name : null;
+  return byDevice.get(key) ?? asName ?? "the selected computer";
+}
 
 /** Key for the chat that has not been sent yet. */
 export const NEW_CHAT = "new";
@@ -64,6 +99,10 @@ type AppState = {
   agentsLoaded: boolean;
   agentId: string | null;
   models: ModelOption[];
+  computers: ComputerSummary[];
+  computersLoading: boolean;
+  computersError: string | null;
+  envOverrides: Record<string, ComputerSelectorField | null>;
   /** null until loaded, or when the backend manages providers itself. */
   providers: ProviderSummary[] | null;
   /** What the main area shows for the selected agent. */
@@ -119,6 +158,8 @@ type AppState = {
   pickCwd: () => Promise<void>;
   setCwd: (cwd: string) => void;
   setModel: (handle: string) => void;
+  refreshComputers: () => Promise<void>;
+  pickEnvironment: (selector: ComputerSelectorField | null) => void;
   setDraft: (text: string) => void;
   setNotice: (notice: string | null) => void;
   setSettingsOpen: (open: boolean) => void;
@@ -153,6 +194,10 @@ const CLEARED = {
   agentsLoaded: false,
   agentId: null,
   models: [],
+  computers: [],
+  computersLoading: false,
+  computersError: null,
+  envOverrides: {},
   providers: null,
   view: "chat",
   memory: null,
@@ -433,6 +478,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     try {
+      const pickedEnv =
+      key in state.envOverrides ? state.envOverrides[key] : undefined;
       const conversation = await api.sendMessage({
         agentId,
         conversationId: activeId,
@@ -440,6 +487,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         otid,
         cwd,
         ...(model ? { model } : {}),
+        // Explicit environment pick: null = cloud sandbox, object = a
+        // registered computer, undefined = the mode's default (omitted).
+        ...(pickedEnv !== undefined ? { computer: pickedEnv ?? undefined } : {}),
       });
       set((current) => ({
         conversations: upsertConversation(current.conversations, {
@@ -603,6 +653,32 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({
       cwdOverrides: { ...state.cwdOverrides, [state.activeId ?? NEW_CHAT]: cwd },
     })),
+
+  refreshComputers: async () => {
+    set({ computersLoading: true, computersError: null });
+    try {
+      set({ computers: await api.listComputers(), computersLoading: false });
+    } catch (error) {
+      set({ computers: [], computersLoading: false, computersError: errorMessage(error) });
+    }
+  },
+
+  pickEnvironment: (selector) => {
+    const key = get().activeId ?? NEW_CHAT;
+    if (key !== NEW_CHAT && get().chats[key]?.running) {
+      set({ notice: "Wait for the current run to finish before changing the environment." });
+      return;
+    }
+    if (key !== NEW_CHAT) {
+      void api.setConversationEnv({ conversationId: key, selector }).catch((error) => {
+        set({ notice: errorMessage(error) });
+      });
+    }
+    set((state) => ({
+      envOverrides: { ...state.envOverrides, [key]: selector },
+      notice: `Runs in this conversation now use ${selector ? labelForComputer(selector, state.computers) : "the cloud sandbox or your default"}.`,
+    }));
+  },
 
   setModel: (handle) =>
     set((state) => ({

@@ -71,6 +71,17 @@ function createBridge() {
     stopTurn: vi.fn(),
     respondApproval: vi.fn(),
     selectDirectory: vi.fn(),
+    getExecutionMode: vi.fn(),
+    listComputers: vi.fn(),
+    getConversationEnv: vi.fn(),
+    setConversationEnv: vi.fn(),
+    setExecutionMode: vi.fn(),
+    getRemoteEnvStatus: vi.fn(),
+    getRemoteEnvName: vi.fn(),
+    setRemoteEnvName: vi.fn(),
+    listRemoteDirectory: vi.fn(),
+    clearBrowseCache: vi.fn(),
+    getConversationCwd: vi.fn(),
   } satisfies Record<keyof AppBridge, unknown>;
 }
 
