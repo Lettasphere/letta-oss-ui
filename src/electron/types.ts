@@ -40,6 +40,17 @@ export type SettingsUpdate = {
   agentId?: string | null;
 };
 
+/** A saved connection: a named snapshot of the flat connection settings. */
+export type SavedConnection = {
+  id: string;
+  name: string;
+  backend: BackendKind;
+  apiBaseUrl?: string;
+  serverUrl?: string;
+  /** Unix ms of the last switch to this connection (most-recent sorts first). */
+  usedAt: number;
+};
+
 export type ConnectionState =
   | { status: "connecting"; backend: BackendKind }
   | {
@@ -207,6 +218,10 @@ export type AppEvent =
 export type AppRequests = {
   getSettings(): AppSettings;
   updateSettings(update: SettingsUpdate): AppSettings;
+  listSavedConnections(): SavedConnection[];
+  saveCurrentConnection(name: string): SavedConnection[];
+  switchSavedConnection(input: { id: string }): SavedConnection[];
+  deleteSavedConnection(input: { id: string }): SavedConnection[];
   getConnection(): ConnectionState;
   reconnect(): ConnectionState;
   listAgents(): AgentSummary[];

@@ -71,6 +71,10 @@ function createBridge() {
     stopTurn: vi.fn(),
     respondApproval: vi.fn(),
     selectDirectory: vi.fn(),
+    listSavedConnections: vi.fn(),
+    saveCurrentConnection: vi.fn(),
+    switchSavedConnection: vi.fn(),
+    deleteSavedConnection: vi.fn(),
   } satisfies Record<keyof AppBridge, unknown>;
 }
 

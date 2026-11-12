@@ -4,6 +4,10 @@ import type { AppBridge, AppEvent, AppRequests } from "./types.js" with { "resol
 const METHODS = [
   "getSettings",
   "updateSettings",
+  "listSavedConnections",
+  "saveCurrentConnection",
+  "switchSavedConnection",
+  "deleteSavedConnection",
   "getConnection",
   "reconnect",
   "listAgents",
