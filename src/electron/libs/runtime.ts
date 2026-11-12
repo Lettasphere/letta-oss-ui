@@ -23,6 +23,7 @@ import type {
   SendMessageInput,
 } from "../types.js";
 import { startAppServer, type AppServerHandle } from "./app-server.js";
+import { ensureSharedServer, getSharedServerConfig } from "./shared-server.js";
 import { serverBackend, setControlTarget } from "./control.js";
 import {
   type ConnectionConfig,
@@ -121,8 +122,20 @@ async function connect(): Promise<LettaAgentClient> {
   let next: LettaAgentClient | null = null;
   let owned: AppServerHandle | null = null;
   try {
-    let detail: string;
-    if (config.backend === "remote") {
+    let detail = "";
+    // Shared persistent server takes precedence when enabled and healthy:
+    // the app joins the box-wide runtime instead of spawning a private one.
+    if (getSharedServerConfig().enabled && config.backend !== "remote") {
+      const shared = await ensureSharedServer();
+      if (shared.running && shared.url) {
+        next = new LettaAgentClient({
+          backend: "local",
+          appServer: { url: shared.url, harnessBackend: config.backend === "cloud" ? "api" : "local" },
+        });
+        detail = `shared server (${shared.url})`;
+      }
+    }
+    if (!next && config.backend === "remote") {
       if (!config.serverUrl) throw new Error("Add your Letta server URL in Settings.");
       next = new LettaAgentClient({
         backend: "remote",
@@ -130,7 +143,8 @@ async function connect(): Promise<LettaAgentClient> {
         ...(config.serverToken ? { authToken: config.serverToken } : {}),
       });
       detail = config.serverUrl;
-    } else {
+    }
+    if (!next) {
       const cloud = config.backend === "cloud";
       owned = await startAppServer({
         harnessBackend: cloud ? "api" : "local",

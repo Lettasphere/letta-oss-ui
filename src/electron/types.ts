@@ -204,8 +204,16 @@ export type AppEvent =
   | { type: "menu"; command: "new-chat" | "settings" };
 
 /** Renderer -> main requests. Every method is an `ipcRenderer.invoke` round trip. */
+export type SharedServerStatusDto = {
+  enabled: boolean;
+  url: string | null;
+  running: boolean;
+};
+
 export type AppRequests = {
   getSettings(): AppSettings;
+  getSharedServer(): SharedServerStatusDto;
+  setSharedServer(enabled: boolean): SharedServerStatusDto;
   updateSettings(update: SettingsUpdate): AppSettings;
   getConnection(): ConnectionState;
   reconnect(): ConnectionState;

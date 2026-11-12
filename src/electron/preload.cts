@@ -3,6 +3,8 @@ import type { AppBridge, AppEvent, AppRequests } from "./types.js" with { "resol
 
 const METHODS = [
   "getSettings",
+  "getSharedServer",
+  "setSharedServer",
   "updateSettings",
   "getConnection",
   "reconnect",

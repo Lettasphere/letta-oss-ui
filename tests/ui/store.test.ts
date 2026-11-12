@@ -71,6 +71,8 @@ function createBridge() {
     stopTurn: vi.fn(),
     respondApproval: vi.fn(),
     selectDirectory: vi.fn(),
+    getSharedServer: vi.fn(),
+    setSharedServer: vi.fn(),
   } satisfies Record<keyof AppBridge, unknown>;
 }
 

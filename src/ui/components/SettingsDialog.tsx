@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useAppStore, type SettingsTab } from "../store";
 import type { AppSettings, BackendKind, SettingsUpdate } from "../types";
@@ -58,6 +58,11 @@ function SettingsForm({ settings, onClose }: { settings: AppSettings; onClose: (
   const [serverToken, setServerToken] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [shared, setShared] = useState<import("../../electron/types.js").SharedServerStatusDto | null>(null);
+
+  useEffect(() => {
+    void window.bridge.getSharedServer().then((s) => setShared(s));
+  }, [open]);
 
   const save = async () => {
     setSaving(true);
@@ -84,6 +89,32 @@ function SettingsForm({ settings, onClose }: { settings: AppSettings; onClose: (
   };
 
   const canSave = backend !== "remote" || serverUrl.trim().length > 0;
+
+  const sharedServerSection = (
+    <div className="grid gap-2">
+      <div className="text-xs font-medium text-ink-700">Shared server on this computer</div>
+      <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-border px-3.5 py-2.5">
+        <input
+          type="checkbox"
+          className="accent-[var(--color-accent)]"
+          checked={shared?.enabled ?? false}
+          onChange={(event) => {
+            const enabled = event.target.checked;
+            setShared((current) => ({ enabled, url: null, running: current?.running ?? false }));
+            void window.bridge.setSharedServer(enabled).then((status) => setShared(status));
+          }}
+        />
+        <span>
+          <span className="block text-sm font-medium text-ink-900">Share this computer's server</span>
+          <span className="block text-xs text-muted">
+            {shared?.running && shared.url
+              ? `Running at ${shared.url} — other trusted apps can join this runtime`
+              : "Runs a persistent Letta server (port 4500) that survives app restarts; this app joins it instead of spawning a private one"}
+          </span>
+        </span>
+      </label>
+    </div>
+  );
 
   return (
     <form
@@ -114,6 +145,8 @@ function SettingsForm({ settings, onClose }: { settings: AppSettings; onClose: (
           </label>
         ))}
       </fieldset>
+
+      {sharedServerSection}
 
       {backend === "cloud" && (
         <div className="grid gap-3">
