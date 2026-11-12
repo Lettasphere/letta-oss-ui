@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useAppStore, type SettingsTab } from "../store";
-import type { AppSettings, BackendKind, SettingsUpdate } from "../types";
+import type { AppSettings, BackendKind, SavedConnection, SettingsUpdate } from "../types";
 import { ProvidersPanel } from "./ProvidersPanel";
 import { CloseIcon, Spinner } from "./icons";
 
@@ -9,6 +9,8 @@ const TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: "connection", label: "Connection" },
   { id: "providers", label: "Model providers" },
 ];
+
+const api = window.bridge;
 
 const BACKENDS: Array<{ kind: BackendKind; label: string; detail: string }> = [
   {
@@ -56,6 +58,8 @@ function SettingsForm({ settings, onClose }: { settings: AppSettings; onClose: (
   const [apiBaseUrl, setApiBaseUrl] = useState(settings.apiBaseUrl);
   const [serverUrl, setServerUrl] = useState(settings.serverUrl);
   const [serverToken, setServerToken] = useState("");
+  const [savedConnections, setSavedConnections] = useState<SavedConnection[]>([]);
+  const [saveName, setSaveName] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -84,6 +88,15 @@ function SettingsForm({ settings, onClose }: { settings: AppSettings; onClose: (
   };
 
   const canSave = backend !== "remote" || serverUrl.trim().length > 0;
+
+  useEffect(() => {
+    void api.listSavedConnections().then(setSavedConnections);
+  }, [open]);
+
+  const persistConnection = async (name: string) => {
+    setSavedConnections(await api.saveCurrentConnection(name));
+    setSaveName("");
+  };
 
   return (
     <form
@@ -114,6 +127,73 @@ function SettingsForm({ settings, onClose }: { settings: AppSettings; onClose: (
           </label>
         ))}
       </fieldset>
+
+      {savedConnections.length > 0 && (
+        <fieldset className="grid gap-2">
+          <legend className="mb-1 text-xs font-medium text-ink-700">Saved connections</legend>
+          {savedConnections.map((connection) => (
+            <div
+              key={connection.id}
+              className="flex items-center gap-3 rounded-xl border border-border px-3.5 py-2.5"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-ink-900">
+                  {connection.name}
+                </span>
+                <span className="block truncate font-mono text-[11px] text-muted">
+                  {connection.backend === "remote" && (connection.serverUrl ?? "remote")}
+                  {connection.backend === "cloud" && (connection.apiBaseUrl || "api.letta.com")}
+                  {connection.backend === "local" && "this computer"}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  void api.switchSavedConnection({ id: connection.id });
+                  // The main process reconnects; the store picks up the new
+                  // connection state through `connection` events.
+                  window.location.reload();
+                }}
+                className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-ink-900 hover:bg-surface-tertiary"
+              >
+                Switch
+              </button>
+              <button
+                type="button"
+                onClick={() => void api.deleteSavedConnection({ id: connection.id }).then(setSavedConnections)}
+                className="rounded-lg px-2 py-1.5 text-xs font-medium text-muted hover:text-ink-900"
+                aria-label={`Delete ${connection.name}`}
+              >
+                <CloseIcon className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+        </fieldset>
+      )}
+
+      <div className="grid gap-2">
+        <div className="text-xs font-medium text-ink-700">Save current connection as…</div>
+        <div className="flex gap-2">
+          <input
+            value={saveName}
+            onChange={(event) => setSaveName(event.target.value)}
+            placeholder="e.g. Work laptop, Homelab server"
+            className="field"
+          />
+          <button
+            type="button"
+            disabled={saveName.trim().length === 0}
+            onClick={() => void persistConnection(saveName)}
+            className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-ink-900 disabled:opacity-50 hover:bg-surface-tertiary"
+          >
+            Save
+          </button>
+        </div>
+        <p className="text-xs text-muted">
+          Snapshots the backend, URL, and credentials above under a name you pick. Switching
+          applies the snapshot and reconnects.
+        </p>
+      </div>
 
       {backend === "cloud" && (
         <div className="grid gap-3">

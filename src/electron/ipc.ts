@@ -26,7 +26,14 @@ import {
   writeMemoryFile,
 } from "./libs/memory.js";
 import { connectProvider, disconnectProvider, listModels, listProviders } from "./libs/providers.js";
-import { getSettings, updateSettings } from "./libs/settings.js";
+import {
+  deleteSavedConnection,
+  getSettings,
+  listSavedConnections,
+  saveCurrentConnection,
+  switchSavedConnection,
+  updateSettings,
+} from "./libs/settings.js";
 import { describeError } from "./libs/transcript.js";
 import { validateEventFrame } from "./util.js";
 
@@ -44,6 +51,14 @@ export function broadcast(event: AppEvent): void {
 
 const handlers: Handlers = {
   getSettings,
+  listSavedConnections,
+  saveCurrentConnection,
+  switchSavedConnection: (input) => {
+    const result = switchSavedConnection(input.id);
+    void reconnect();
+    return result;
+  },
+  deleteSavedConnection: (input) => deleteSavedConnection(input.id),
   updateSettings: (update) => {
     const { connectionChanged } = updateSettings(update);
     if (update.permissionMode) applyPermissionMode();
