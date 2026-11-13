@@ -267,10 +267,17 @@ function RemoteBrowseDialog({
     setPath(next);
     setLoading(true);
     setError(null);
+    console.log("[browse] listing", JSON.stringify(selector), next);
     void window.bridge
       .listRemoteDirectory({ selector, path: next })
-      .then((dirs) => setEntries(dirs))
-      .catch((failure) => setError(failure instanceof Error ? failure.message : String(failure)))
+      .then((dirs) => {
+        console.log("[browse] got", dirs.length, "entries for", next, "first:", dirs[0]);
+        setEntries(dirs);
+      })
+      .catch((failure) => {
+        console.log("[browse] FAILED for", next, String(failure).slice(0, 200));
+        setError(failure instanceof Error ? failure.message : String(failure));
+      })
       .finally(() => setLoading(false));
   };
 
