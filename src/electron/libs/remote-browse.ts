@@ -1,5 +1,5 @@
 import { LettaAgentClient, type ComputerSelector } from "@letta-ai/letta-agent-sdk";
-import { getConnectionConfig, load, save } from "./settings.js";
+import { getConnectionConfig, load } from "./settings.js";
 
 /**
  * Remote/sandbox directory browsing for the folder picker.
@@ -10,13 +10,11 @@ import { getConnectionConfig, load, save } from "./settings.js";
  * creates NOTHING: no conversations, no agent turns.
  *
  * SANDBOX: managed sandboxes have no listener socket; listings run as one
- * turn in a single reused "folder-browser" conversation under the app's
- * active agent (found-or-created once, resumed by id forever).
+ * transport directly (same protocol as computers) — zero conversations,
+ * zero turns.
  */
 
 let cloudClient: LettaAgentClient | null = null;
-let browseConversationId: string | null = null;
-const BROWSE_CONVERSATION_NAME = "folder-browser";
 
 function config() {
   return getConnectionConfig();
@@ -72,65 +70,60 @@ async function listOnComputer(selector: ComputerSelector, path: string): Promise
   return reply.folders ?? [];
 }
 
-// --- Sandbox: one reused conversation ----------------------------------------
 
-const SANDBOX_LIST_PROMPT = (path: string) =>
-  `Run: find ${JSON.stringify(path)} -mindepth 1 -maxdepth 1 -type d -printf '%f\\n' | sort` +
-  ` — then reply with ONLY the directory names, one per line, no headers, no commentary, no code fences. If the path does not exist, reply exactly: NOT_FOUND`;
 
-function activeAgentId(): string {
-  const stored = load();
-  return stored.agentIds?.cloud ?? stored.agentIds?.local ?? "";
-}
 
-async function ensureBrowseConversation(): Promise<string> {
-  // In-memory cache first, then the persisted ID — deterministic, no listing,
-  // no matching. The ID is written once at creation; a failed lookup can
-  // never silently mint new conversations (the old design's failure mode).
-  if (browseConversationId) return browseConversationId;
-  const stored = load();
-  if (stored.browseConversationId) {
-    browseConversationId = stored.browseConversationId;
-    return browseConversationId;
+// --- Sandbox: the session transport speaks list_in_directory directly -------
+
+/**
+ * A persistent sandbox session used ONLY as a listing transport: the session
+ * attaches the agent's managed sandbox, and its app-server connection answers
+ * the `list_in_directory` protocol command directly — instant, zero turns,
+ * zero conversations (verified against live sandboxes). Kept alive for the
+ * app's lifetime; recreated lazily if it drops.
+ */
+let sandboxSession: unknown | null = null;
+
+type RawClient = {
+  requestRaw: (
+    message: unknown,
+    options: { predicate: (message: { type?: string; request_id?: string }) => boolean },
+  ) => Promise<{ success?: boolean; folders?: string[]; error?: string }>;
+};
+
+async function sandboxTransport(): Promise<RawClient> {
+  if (sandboxSession) {
+    const existing = (
+      (sandboxSession as { controller?: { client?: RawClient } }).controller ?? {}
+    ).client;
+    if (existing) return existing;
   }
-  const agentId = activeAgentId();
+  const stored = load();
+  const agentId = stored.agentIds?.cloud ?? stored.agentIds?.local ?? "";
   if (!agentId) throw new Error("Select an agent before browsing folders.");
-  const created = (await client().conversations.create({
-    agentId,
-    name: BROWSE_CONVERSATION_NAME,
-  } as never)) as unknown as { id: string };
-  browseConversationId = created.id;
-  save({ ...load(), browseConversationId: created.id });
-  return created.id;
+  const session = client().createSession(agentId, {
+    permissionMode: "unrestricted",
+  });
+  await (session as unknown as { initialize?: () => Promise<void> }).initialize?.();
+  sandboxSession = session;
+  const transport = ((session as { controller?: { client?: RawClient } }).controller ?? {})
+    .client;
+  if (!transport) throw new Error("The sandbox transport did not come up.");
+  return transport;
 }
 
 async function listInSandbox(path: string): Promise<string[]> {
-  const conversationId = await ensureBrowseConversation();
-  const session = client().resumeSession(conversationId, {
-    permissionMode: "unrestricted",
-  });
-  const result = (await (
-    session as unknown as {
-      sendAndWaitForResult: (message: unknown) => Promise<{
-        success?: boolean;
-        result?: string;
-        error?: string;
-      }>;
-    }
-  ).sendAndWaitForResult([{ type: "text", text: SANDBOX_LIST_PROMPT(path) }])) as {
-    success?: boolean;
-    result?: string;
-    error?: string;
-  };
-  session.close();
-  if (!result.success) throw new Error(result.error ?? "The listing turn failed.");
-  const body = (result.result ?? "").trim();
-  if (body === "NOT_FOUND") throw new Error("That path does not exist in the sandbox.");
-  return body
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !line.startsWith("```") && line !== "NOT_FOUND")
-    .slice(0, 200);
+  const transport = await sandboxTransport();
+  const requestId = `sbx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const reply = await transport.requestRaw(
+    { type: "list_in_directory", path, request_id: requestId, include_files: false },
+    {
+      predicate: (message) =>
+        message?.type === "list_in_directory_response" && message?.request_id === requestId,
+    },
+  );
+  if (!reply.success) throw new Error(reply.error ?? "The listing failed.");
+  return reply.folders ?? [];
 }
 
 // --- Public -------------------------------------------------------------------
