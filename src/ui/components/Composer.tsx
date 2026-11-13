@@ -261,6 +261,7 @@ function RemoteBrowseDialog({
 
   const [entries, setEntries] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [directoriesLoaded, setDirectoriesLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = (next: string) => {
@@ -273,6 +274,7 @@ function RemoteBrowseDialog({
       .then((dirs) => {
         console.log("[browse] got", dirs.length, "entries for", next, "first:", dirs[0]);
         setEntries(dirs);
+        setDirectoriesLoaded(true);
       })
       .catch((failure) => {
         console.log("[browse] FAILED for", next, String(failure).slice(0, 200));
@@ -331,7 +333,10 @@ function RemoteBrowseDialog({
                 📁 {entry}
               </button>
             ))}
-          {!loading && !error && entries.length === 0 && (
+          {!loading && !error && !directoriesLoaded && (
+            <div className="px-3 py-2 text-sm text-muted">Loading…</div>
+          )}
+          {!loading && !error && directoriesLoaded && entries.length === 0 && (
             <div className="px-3 py-2 text-sm text-muted">No subdirectories.</div>
           )}
         </div>
