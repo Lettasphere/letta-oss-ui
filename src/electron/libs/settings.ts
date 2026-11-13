@@ -24,6 +24,8 @@ export type StoredSettings = {
   recentCwds?: string[];
   conversationCwds?: Record<string, string>;
   sharedServer?: { enabled: boolean; port: number };
+  /** The reused sandbox-browse conversation (created once, persisted). */
+  browseConversationId?: string;
   conversationEnvs?: Record<string, import("@letta-ai/letta-agent-sdk").ComputerSelector | null>;
   executionMode?: "local" | "remote-env" | "cloud-only";
   /** Custom registration name for the app-spawned letta remote (default: hostname). */

@@ -1,5 +1,5 @@
 import { LettaAgentClient, type ComputerSelector } from "@letta-ai/letta-agent-sdk";
-import { getConnectionConfig, load } from "./settings.js";
+import { getConnectionConfig, load, save } from "./settings.js";
 
 /**
  * Remote/sandbox directory browsing for the folder picker.
@@ -84,24 +84,23 @@ function activeAgentId(): string {
 }
 
 async function ensureBrowseConversation(): Promise<string> {
+  // In-memory cache first, then the persisted ID — deterministic, no listing,
+  // no matching. The ID is written once at creation; a failed lookup can
+  // never silently mint new conversations (the old design's failure mode).
   if (browseConversationId) return browseConversationId;
+  const stored = load();
+  if (stored.browseConversationId) {
+    browseConversationId = stored.browseConversationId;
+    return browseConversationId;
+  }
   const agentId = activeAgentId();
   if (!agentId) throw new Error("Select an agent before browsing folders.");
-  const listed = (await client().conversations.list({ agentId, limit: 50 } as never).catch(
-    () => [],
-  )) as unknown as { id: string; name: string | null }[] | null;
-  const existing = listed?.find?.(
-    (conversation) => conversation.name === BROWSE_CONVERSATION_NAME,
-  );
-  if (existing) {
-    browseConversationId = existing.id;
-    return existing.id;
-  }
   const created = (await client().conversations.create({
     agentId,
     name: BROWSE_CONVERSATION_NAME,
   } as never)) as unknown as { id: string };
   browseConversationId = created.id;
+  save({ ...load(), browseConversationId: created.id });
   return created.id;
 }
 
