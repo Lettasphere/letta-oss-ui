@@ -1,39 +1,65 @@
 import { LettaAgentClient, type ComputerSelector } from "@letta-ai/letta-agent-sdk";
-import { getConnectionConfig } from "./settings.js";
+import { getConnectionConfig, load } from "./settings.js";
 
 /**
  * Remote/sandbox directory browsing for the folder picker.
  *
- * The SDK exposes no direct filesystem API for a remote computer or the
- * managed sandbox — but a one-shot session pinned to the target CAN run a
- * directory listing. Each listing costs one quick agent turn (~5-35s), so
- * results are cached per (target, path): back-navigation and re-opens are
- * instant within the app's lifetime.
+ * DESIGN (post-litter-fix): ALL listings — every click, every target — run
+ * through ONE reusable "folder-browser" conversation under the app's active
+ * agent, found-or-created on first browse and resumed by ID thereafter.
+ * Nothing is created per listing; the agent's history stays clean.
  *
- * Sandboxes: selector omitted — the turn runs in the SDK-managed sandbox.
+ * The conversation is named and reusable; sandbox listings run in the
+ * agent's managed sandbox, computer listings pass the computer override on
+ * the same conversation. Results are cached per (target, path).
  */
 
 let browseClient: LettaAgentClient | null = null;
+let browseConversationId: string | null = null;
+const BROWSE_CONVERSATION_NAME = "folder-browser";
 
 function client(): LettaAgentClient {
+  const config = getConnectionConfig();
   browseClient ??= new LettaAgentClient({
     backend: "cloud",
-    ...(getConnectionConfig().apiKey ? { apiKey: getConnectionConfig().apiKey } : {}),
-    ...(getConnectionConfig().apiBaseUrl ? { apiBaseUrl: getConnectionConfig().apiBaseUrl } : {}),
+    ...(config.apiKey ? { apiKey: config.apiKey } : {}),
+    ...(config.apiBaseUrl ? { apiBaseUrl: config.apiBaseUrl } : {}),
   });
   return browseClient;
 }
 
-const cache = new Map<string, string[]>();
+function activeAgentId(): string {
+  const stored = load();
+  return stored.agentIds?.cloud ?? stored.agentIds?.local ?? "";
+}
 
-/** The agent browsing turns run under. Set by ipc from the app's active agent. */
-let BROWSE_AGENT_ID = "";
+const cache = new Map<string, string[]>();
 
 const LIST_PROMPT = (path: string) =>
   // find is depth-invariant INCLUDING at / (the ls -p + sed pipeline breaks on
   // root-level entries).
   `Run: find ${JSON.stringify(path)} -mindepth 1 -maxdepth 1 -type d -printf '%f\\n' | sort` +
   ` — then reply with ONLY the directory names, one per line, no headers, no commentary, no code fences. If the path does not exist, reply exactly: NOT_FOUND`;
+
+async function ensureBrowseConversation(): Promise<string> {
+  if (browseConversationId) return browseConversationId;
+  const agentId = activeAgentId();
+  if (!agentId) throw new Error("Select an agent before browsing folders.");
+  const listed = (await client().conversations.list({ agentId, limit: 50 } as never).catch(() => [])) as unknown as
+    | { id: string; name: string | null }[]
+    | null;
+  const existing = listed?.find?.((conversation) => conversation.name === BROWSE_CONVERSATION_NAME);
+  if (existing) {
+    browseConversationId = existing.id;
+    return existing.id;
+  }
+  const created = (await client().conversations.create({
+    agentId,
+    name: BROWSE_CONVERSATION_NAME,
+  } as never)) as unknown as { id: string };
+  browseConversationId = created.id;
+  return created.id;
+}
 
 export async function listRemoteDirectory(
   selector: ComputerSelector | null,
@@ -43,13 +69,27 @@ export async function listRemoteDirectory(
   const hit = cache.get(key);
   if (hit) return hit;
 
-  const result = (await client().prompt(
-    [{ type: "text", text: LIST_PROMPT(path) }],
-    // Agent ID is resolved by the caller — browsing needs SOME cloud agent;
-    // the turn is stateless for the picker's purposes.
-    BROWSE_AGENT_ID,
-    { permissionMode: "unrestricted", ...(selector ? { computer: selector } : {}) } as Record<string, unknown>,
-  )) as { success?: boolean; result?: string; error?: string };
+  const conversationId = await ensureBrowseConversation();
+  const session = client().resumeSession(conversationId, {
+    permissionMode: "unrestricted",
+    ...(selector ? { computer: selector } : {}),
+  });
+  const result = (await (
+    session as unknown as {
+      sendAndWaitForResult: (message: unknown) => Promise<{
+        type: string;
+        success?: boolean;
+        result?: string;
+        error?: string;
+      }>;
+    }
+  ).sendAndWaitForResult([{ type: "text", text: LIST_PROMPT(path) }])) as {
+    type: string;
+    success?: boolean;
+    result?: string;
+    error?: string;
+  };
+  session.close();
 
   if (!result.success) throw new Error(result.error ?? "The listing turn failed.");
   const body = (result.result ?? "").trim();
@@ -66,8 +106,4 @@ export async function listRemoteDirectory(
 /** Invalidate on demand (fresh listing after remote changes). */
 export function clearBrowseCache(): void {
   cache.clear();
-}
-
-export function setBrowseAgent(agentId: string): void {
-  BROWSE_AGENT_ID = agentId;
 }

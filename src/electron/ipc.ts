@@ -28,7 +28,7 @@ import {
 import { connectProvider, disconnectProvider, listModels, listProviders } from "./libs/providers.js";
 import { getConversationCwd, getSettings, load, save, updateSettings } from "./libs/settings.js";
 import { getConversationEnv, listComputers, setConversationEnv } from "./libs/env.js";
-import { clearBrowseCache, listRemoteDirectory, setBrowseAgent } from "./libs/remote-browse.js";
+import { clearBrowseCache, listRemoteDirectory } from "./libs/remote-browse.js";
 import { defaultRemoteEnvName, ensureRemoteEnv, remoteEnvState, stopRemoteEnv } from "./libs/remote-env.js";
 import { describeError } from "./libs/transcript.js";
 import { validateEventFrame } from "./util.js";
@@ -52,10 +52,7 @@ const handlers: Handlers = {
   setConversationEnv: (input) => setConversationEnv(input.conversationId, input.selector),
   getExecutionMode: () => load().executionMode ?? "local",
   getRemoteEnvName: () => load().remoteEnvName ?? "",
-  listRemoteDirectory: async (input) => {
-    setBrowseAgent(load().agentIds?.cloud ?? load().agentIds?.local ?? "");
-    return listRemoteDirectory(input.selector, input.path);
-  },
+  listRemoteDirectory: (input) => listRemoteDirectory(input.selector, input.path),
   clearBrowseCache: () => clearBrowseCache(),
   getConversationCwd: (conversationId) => getConversationCwd(conversationId),
   setRemoteEnvName: (input) => {
