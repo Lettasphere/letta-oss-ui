@@ -230,6 +230,11 @@ export type AppRequests = {
   }): string[];
   getConversationCwd(conversationId: string): string | null;
   clearBrowseCache(): void;
+  getDefaultDirectory(input: {
+    selector: import("@letta-ai/letta-agent-sdk").ComputerSelector | null;
+  }): string;
+  getTargetFolder(input: { targetKey: string }): string | null;
+  setTargetFolder(input: { targetKey: string; folder: string | null }): string | null;
   setRemoteEnvName(input: { name: string }): string;
   setExecutionMode(mode: ExecutionMode): ExecutionMode;
   getRemoteEnvStatus(): RemoteEnvStatus;

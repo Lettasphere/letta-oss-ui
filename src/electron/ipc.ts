@@ -28,7 +28,11 @@ import {
 import { connectProvider, disconnectProvider, listModels, listProviders } from "./libs/providers.js";
 import { getConversationCwd, getSettings, load, save, updateSettings } from "./libs/settings.js";
 import { getConversationEnv, listComputers, setConversationEnv } from "./libs/env.js";
-import { clearBrowseCache, listRemoteDirectory } from "./libs/remote-browse.js";
+import {
+  clearBrowseCache,
+  getDefaultDirectory,
+  listRemoteDirectory,
+} from "./libs/remote-browse.js";
 import { defaultRemoteEnvName, ensureRemoteEnv, remoteEnvState, stopRemoteEnv } from "./libs/remote-env.js";
 import { describeError } from "./libs/transcript.js";
 import { validateEventFrame } from "./util.js";
@@ -54,6 +58,21 @@ const handlers: Handlers = {
   getRemoteEnvName: () => load().remoteEnvName ?? "",
   listRemoteDirectory: (input) => listRemoteDirectory(input.selector, input.path),
   clearBrowseCache: () => clearBrowseCache(),
+  getDefaultDirectory: (input) =>
+    getDefaultDirectory(input.selector),
+  getTargetFolder: (input) => {
+    const stored = load();
+    const key = input.targetKey;
+    return stored.targetFolders?.[key] ?? null;
+  },
+  setTargetFolder: (input) => {
+    const stored = load();
+    const targetFolders = { ...(stored.targetFolders ?? {}) };
+    if (input.folder) targetFolders[input.targetKey] = input.folder;
+    else delete targetFolders[input.targetKey];
+    save({ ...stored, targetFolders });
+    return input.folder ?? null;
+  },
   getConversationCwd: (conversationId) => getConversationCwd(conversationId),
   setRemoteEnvName: (input) => {
     const stored = load();

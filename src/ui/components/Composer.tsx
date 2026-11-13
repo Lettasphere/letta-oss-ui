@@ -43,6 +43,33 @@ function FolderMenu({ cwd }: { cwd: string }) {
     return state.cwdOverrides[key] ?? null;
   });
 
+  // Per-target folder: remembered pick, else the target's discovered default.
+  // The label mirrors what the session will actually use.
+  const targetDeviceId =
+    envOverride && typeof envOverride === "object" && "deviceId" in envOverride
+      ? envOverride.deviceId
+      : null;
+  const targetKey = effectiveEnv === "sandbox" ? "sandbox" : targetDeviceId ?? "remote";
+  const [targetFolder, setTargetFolder] = useState<string | null>(remoteCwd);
+  useEffect(() => {
+    if (effectiveEnv !== "sandbox" && effectiveEnv !== "remote") return;
+    void window.bridge
+      .getTargetFolder({ targetKey })
+      .then((remembered) => {
+        if (remembered) {
+          setTargetFolder(remembered);
+          return;
+        }
+        // No remembered pick: discover and show the target's own default.
+        return window.bridge
+          .getDefaultDirectory({ selector: targetDeviceId ? { deviceId: targetDeviceId } : null })
+          .then((def) => setTargetFolder(def))
+          .catch(() => setTargetFolder(null));
+      })
+      .catch(() => setTargetFolder(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveEnv, targetKey]);
+
   // Resolve the browse target: explicit pick → computer/sandbox.
   const selector =
     effectiveEnv === "sandbox"
@@ -68,7 +95,9 @@ function FolderMenu({ cwd }: { cwd: string }) {
           onClick={() => setBrowsing(true)}
         >
           <FolderIcon className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate text-xs">{remoteCwd ? shortPath(remoteCwd) : effectiveEnv === "sandbox" ? "Sandbox" : "Remote"}</span>
+          <span className="truncate text-xs">
+            {targetFolder ? shortPath(targetFolder) : effectiveEnv === "sandbox" ? "Sandbox" : "Remote"}
+          </span>
           <ChevronDownIcon className="h-3 w-3 shrink-0" />
         </button>
         {browsing && (
@@ -77,6 +106,10 @@ function FolderMenu({ cwd }: { cwd: string }) {
             startPath={cwd}
             onChoose={(path) => {
               setCwd(path);
+              setTargetFolder(path);
+              void window.bridge
+                .setTargetFolder({ targetKey, folder: path })
+                .catch(() => undefined);
               setBrowsing(false);
             }}
             onClose={() => setBrowsing(false)}

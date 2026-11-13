@@ -144,3 +144,29 @@ export async function listRemoteDirectory(
 export function clearBrowseCache(): void {
   cache.clear();
 }
+
+/** The target's default working directory (boot_working_directory). */
+export async function getDefaultDirectory(
+  selector: ComputerSelector | null,
+): Promise<string> {
+  const transport: RawClient = selector
+    ? await envListClientFor(selector)
+    : await sandboxTransport();
+  const requestId = `dflt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const reply = (await transport.requestRaw(
+    { type: "get_cwd_map", request_id: requestId },
+    {
+      predicate: (message: { type?: string; request_id?: string }) =>
+        message?.type === "get_cwd_map_response" && message?.request_id === requestId,
+    },
+  )) as { success?: boolean; boot_working_directory?: string; error?: string };
+  if (!reply.success) throw new Error(reply.error ?? "Could not read the default folder.");
+  return reply.boot_working_directory ?? "/";
+}
+
+async function envListClientFor(selector: ComputerSelector): Promise<RawClient> {
+  const resolved = await client().computers.resolve(selector);
+  if (!resolved.connectionId) throw new Error("That computer is offline.");
+  const env = await envListClient(resolved.connectionId);
+  return env as unknown as RawClient;
+}

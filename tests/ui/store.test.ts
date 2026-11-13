@@ -82,6 +82,9 @@ function createBridge() {
     listRemoteDirectory: vi.fn(),
     clearBrowseCache: vi.fn(),
     getConversationCwd: vi.fn(),
+    getDefaultDirectory: vi.fn(),
+    getTargetFolder: vi.fn(),
+    setTargetFolder: vi.fn(),
   } satisfies Record<keyof AppBridge, unknown>;
 }
 
