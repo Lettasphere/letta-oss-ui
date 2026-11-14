@@ -94,7 +94,7 @@ export function EnvironmentPicker() {
 
   if (!isCloud) return null;
 
-  const choose = (selector: ComputerSelectorField | null) => {
+  const choose = (selector: ComputerSelectorField | null | undefined) => {
     void pickEnvironment(selector);
     setOpen(false);
   };
@@ -119,7 +119,7 @@ export function EnvironmentPicker() {
           {mode === "local" && (
             <button
               type="button"
-              onClick={() => choose(null)}
+              onClick={() => choose(undefined)}
               className="flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm hover:bg-surface-tertiary"
             >
               <span>This computer</span>

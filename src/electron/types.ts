@@ -219,7 +219,8 @@ export type AppRequests = {
   getConversationEnv(conversationId: string): ConversationEnv;
   setConversationEnv(input: {
     conversationId: string;
-    selector: ComputerSelectorField | null;
+    /** null = cloud sandbox; undefined = inherit the mode default. */
+    selector: ComputerSelectorField | null | undefined;
   }): ConversationEnv;
   getExecutionMode(): ExecutionMode;
   getRemoteEnvName(): string;

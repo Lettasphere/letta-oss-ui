@@ -61,7 +61,7 @@ export function getConversationEnv(conversationId: string): ConversationEnv {
 
 export function setConversationEnv(
   conversationId: string,
-  selector: ComputerSelectorField | null,
+  selector: ComputerSelectorField | null | undefined,
 ): ConversationEnv {
   const stored = load();
   const map = { ...(stored.conversationEnvs ?? {}) };

@@ -159,7 +159,7 @@ type AppState = {
   setCwd: (cwd: string) => void;
   setModel: (handle: string) => void;
   refreshComputers: () => Promise<void>;
-  pickEnvironment: (selector: ComputerSelectorField | null) => void;
+  pickEnvironment: (selector: ComputerSelectorField | null | undefined) => void;
   setDraft: (text: string) => void;
   setNotice: (notice: string | null) => void;
   setSettingsOpen: (open: boolean) => void;
@@ -674,10 +674,20 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({ notice: errorMessage(error) });
       });
     }
-    set((state) => ({
-      envOverrides: { ...state.envOverrides, [key]: selector },
-      notice: `Runs in this conversation now use ${selector ? labelForComputer(selector, state.computers) : "the cloud sandbox or your default"}.`,
-    }));
+    // undefined = inherit the mode default ("This computer" in private mode):
+    // CLEAR the override rather than writing a value.
+    set((state) => {
+      const envOverrides = { ...state.envOverrides };
+      if (selector === undefined) delete envOverrides[key];
+      else envOverrides[key] = selector;
+      return {
+        envOverrides,
+        notice:
+          selector === undefined
+            ? "Runs in this conversation now use this computer's app server."
+            : `Runs in this conversation now use ${selector ? labelForComputer(selector, state.computers) : "the cloud sandbox"}.`,
+      };
+    });
   },
 
   setModel: (handle) =>
