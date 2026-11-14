@@ -42,6 +42,26 @@ export function EnvironmentPicker() {
     void window.bridge.getRemoteEnvStatus().then(setOwnRemote);
   }, []);
 
+  // Mode can flip mid-session (Settings Save spawns the registration AFTER
+  // this component mounted). While in remote-env mode without an identity
+  // yet, poll until it lands — the spawn's banner takes a couple seconds.
+  useEffect(() => {
+    if (mode !== "remote-env") return;
+    if (ownRemote?.running && ownRemote.effectiveName) return;
+    const timer = setInterval(() => {
+      void window.bridge.getRemoteEnvStatus().then((status) => {
+        setOwnRemote(status);
+        if (status.running && status.effectiveName) clearInterval(timer);
+      });
+    }, 1500);
+    const stop = setTimeout(() => clearInterval(timer), 60_000);
+    return () => {
+      clearInterval(timer);
+      clearTimeout(stop);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, ownRemote?.running, ownRemote?.effectiveName]);
+
   useEffect(() => {
     if (!open) return;
     // Re-read on open: the registration's identity lands ~2s after app
