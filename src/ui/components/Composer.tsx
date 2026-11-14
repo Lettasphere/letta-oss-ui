@@ -51,8 +51,10 @@ function FolderMenu({ cwd }: { cwd: string }) {
       : null;
   const targetKey = effectiveEnv === "sandbox" ? "sandbox" : targetDeviceId ?? "remote";
   const [targetFolder, setTargetFolder] = useState<string | null>(remoteCwd);
+  const [folderResolving, setFolderResolving] = useState(false);
   useEffect(() => {
     if (effectiveEnv !== "sandbox" && effectiveEnv !== "remote") return;
+    setFolderResolving(true);
     void window.bridge
       .getTargetFolder({ targetKey })
       .then((remembered) => {
@@ -66,7 +68,8 @@ function FolderMenu({ cwd }: { cwd: string }) {
           .then((def) => setTargetFolder(def))
           .catch(() => setTargetFolder(null));
       })
-      .catch(() => setTargetFolder(null));
+      .catch(() => setTargetFolder(null))
+      .finally(() => setFolderResolving(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveEnv, targetKey]);
 
@@ -96,7 +99,18 @@ function FolderMenu({ cwd }: { cwd: string }) {
         >
           <FolderIcon className="h-3.5 w-3.5 shrink-0" />
           <span className="truncate text-xs">
-            {targetFolder ? shortPath(targetFolder) : effectiveEnv === "sandbox" ? "Sandbox" : "Remote"}
+            {folderResolving && !targetFolder ? (
+              <span className="flex items-center gap-1.5 text-muted">
+                <Spinner className="h-3 w-3" />
+                Loading
+              </span>
+            ) : targetFolder ? (
+              shortPath(targetFolder)
+            ) : effectiveEnv === "sandbox" ? (
+              "Sandbox"
+            ) : (
+              "Remote"
+            )}
           </span>
           <ChevronDownIcon className="h-3 w-3 shrink-0" />
         </button>
