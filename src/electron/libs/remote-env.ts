@@ -48,9 +48,9 @@ const state: RemoteEnvState = { running: false, effectiveName: null, connectionI
  */
 export type RemoteAuthState =
   | { status: "idle" }
-  | { status: "pending"; url: string | null; userCode: string | null }
+  | { status: "pending"; url: string | null; userCode: string | null; reason: SpawnReason }
   | { status: "done" }
-  | { status: "failed"; error: string | null };
+  | { status: "failed"; error: string | null; reason: SpawnReason };
 
 let authState: RemoteAuthState = { status: "idle" };
 const authListeners = new Set<(s: RemoteAuthState) => void>();
@@ -64,7 +64,11 @@ export function onRemoteAuthChange(listener: (s: RemoteAuthState) => void): () =
   return () => authListeners.delete(listener);
 }
 
-function setAuthState(next: RemoteAuthState): void {
+function setAuthState(
+  next:
+    | RemoteAuthState
+    | { status: "idle"; reason?: SpawnReason },
+): void {
   authState = next;
   for (const listener of authListeners) listener(next);
 }
@@ -74,10 +78,13 @@ function feedAuthParser(chunk: string): void {
   const url = chunk.match(/If it didn't open, visit:\s*(\S+)/)?.[1];
   const code = chunk.match(/Your code:\s*(\S+)/)?.[1];
   if (url || code) {
+    const priorReason =
+      (authState as { reason?: SpawnReason }).reason === "replacement" ? "replacement" : "mode-switch";
     setAuthState({
       status: "pending",
       url: url ?? (authState.status === "pending" ? authState.url : null),
       userCode: code ?? (authState.status === "pending" ? authState.userCode : null),
+      reason: priorReason,
     });
   }
   if (/Authenticated successfully/.test(chunk)) setAuthState({ status: "done" });
@@ -118,11 +125,20 @@ function sweepStrayRegistrations(): void {
 }
 
 /** Ensure a `letta server` (remote mode) registration is running. Idempotent. */
-export function ensureRemoteEnv(env?: Record<string, string>): { running: boolean; pid: number | null } {
+export type SpawnReason = "mode-switch" | "replacement";
+
+export function ensureRemoteEnv(
+  env?: Record<string, string>,
+  reason: SpawnReason = "mode-switch",
+): { running: boolean; pid: number | null } {
   if (launched && launched.exitCode === null && launched.signalCode === null) {
     return { running: true, pid: launched.pid ?? null };
   }
   sweepStrayRegistrations();
+  // Every spawn re-arms the auth watcher: a replacement spawn (adopted
+  // registration died) must surface a fresh sign-in banner even after a
+  // previous successful auth.
+  setAuthState({ status: "idle", reason });
 
   const child = spawn(
     process.execPath,
@@ -190,8 +206,13 @@ export function ensureRemoteEnv(env?: Record<string, string>): { running: boolea
       clearInterval(identityTimer);
       identityTimer = null;
     }
-    if (authState.status === "pending") setAuthState({ status: "failed", error: "The sign-in ended before completing." });
-    else if (authState.status !== "done") setAuthState({ status: "idle" });
+    const priorReason =
+      authState.status === "pending" || authState.status === "failed" ? authState.reason : "mode-switch";
+    if (authState.status === "pending") {
+      setAuthState({ status: "failed", error: "The sign-in ended before completing.", reason: priorReason });
+    } else if (authState.status !== "done") {
+      setAuthState({ status: "idle" });
+    }
     state.running = false;
     state.effectiveName = null;
     state.connectionId = null;
@@ -334,7 +355,7 @@ function startWatch(
       const wasAdopted = adopted.kind === "adopted";
       adopted = { kind: "none" };
       stopWatch();
-      ensureRemoteEnv(env);
+      ensureRemoteEnv(env, "replacement");
       adopted = { kind: "owned", connectionId: "", name: "", deviceId: "" };
       startWatch(cloud, env);
       if (wasAdopted) {

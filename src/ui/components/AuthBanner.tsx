@@ -19,8 +19,10 @@ export function AuthBanner() {
         className="fixed left-1/2 top-4 z-[60] flex max-w-lg -translate-x-1/2 items-start gap-3 rounded-xl border border-error/20 bg-error-light px-4 py-3 shadow-elevated"
       >
         <span className="min-w-0 break-words text-sm text-error">
-          Remote sign-in didn't complete{auth.error ? `: ${auth.error}` : "."} Try switching the
-          execution mode off and on again.
+          {auth.reason === "replacement"
+            ? "This machine's remote went offline and restoring it needs sign-in"
+            : "Remote sign-in didn't complete"}
+          {auth.error ? `: ${auth.error}` : "."} Switch the execution mode off and on to retry.
         </span>
       </div>
     );
@@ -33,7 +35,9 @@ export function AuthBanner() {
     >
       <div className="min-w-0">
         <div className="text-sm font-medium text-ink-900">
-          Go to your browser to authorize this app
+          {auth.reason === "replacement"
+            ? "This machine's remote went offline — authorize to restore it"
+            : "Go to your browser to authorize this app"}
         </div>
         <div className="mt-1 text-xs text-muted">
           {auth.userCode ? (

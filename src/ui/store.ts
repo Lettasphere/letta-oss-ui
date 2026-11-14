@@ -110,9 +110,9 @@ type AppState = {
   /** The spawn's OAuth device-flow state (remote-env mode sign-in). */
   remoteAuth:
     | { status: "idle" }
-    | { status: "pending"; url: string | null; userCode: string | null }
+    | { status: "pending"; url: string | null; userCode: string | null; reason: "mode-switch" | "replacement" }
     | { status: "done" }
-    | { status: "failed"; error: string | null };
+    | { status: "failed"; error: string | null; reason: "mode-switch" | "replacement" };
   computers: ComputerSummary[];
   computersLoading: boolean;
   computersError: string | null;
