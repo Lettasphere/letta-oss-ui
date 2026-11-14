@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain } from "electron";
+import { BrowserWindow, dialog, ipcMain, shell } from "electron";
 import type { AppEvent, AppRequests } from "./types.js";
 import {
   applyPermissionMode,
@@ -45,6 +45,8 @@ import {
 } from "./libs/remote-browse.js";
 import {
   adoptOrSpawn,
+  onRemoteAuthChange,
+  remoteAuthState,
   defaultRemoteEnvName,
   ensureRemoteEnv,
   remoteAdoptionState,
@@ -121,6 +123,11 @@ const handlers: Handlers = {
     return mode;
   },
   getRemoteAdoption: () => remoteAdoptionState(),
+  getRemoteAuth: () => remoteAuthState(),
+  openRemoteAuthUrl: (input) => {
+    if (input.url && /^https:\/\//.test(input.url)) void shell.openExternal(input.url);
+    return true;
+  },
   adoptRemoteEnv: async () => {
     const { getConnectionConfig } = await import("./libs/settings.js");
     const config = getConnectionConfig();
@@ -195,6 +202,7 @@ function remoteEnvStatusSafe() {
 }
 
 export function registerIpc(): void {
+  onRemoteAuthChange((auth) => broadcast({ type: "remote_auth", auth }));
   for (const [name, handler] of Object.entries(handlers)) {
     ipcMain.handle(`app:${name}`, async (event, ...args: unknown[]) => {
       // Errors cross the bridge as data so the renderer sees the real message

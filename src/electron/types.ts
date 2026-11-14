@@ -206,7 +206,9 @@ export type SendMessageInput = {
 };
 
 /** Main -> renderer push events. */
+// (remote_auth variant appended below)
 export type AppEvent =
+  | { type: "remote_auth"; auth: import("./libs/remote-env.js").RemoteAuthState }
   | { type: "connection"; state: ConnectionState }
   | { type: "turn.started"; conversationId: string }
   | { type: "turn.rows"; conversationId: string; rows: ChatRow[] }
@@ -250,6 +252,8 @@ export type AppRequests = {
   setExecutionMode(mode: ExecutionMode): ExecutionMode;
   getRemoteEnvStatus(): RemoteEnvStatus;
   getRemoteAdoption(): import("./libs/remote-env.js").AdoptedState;
+  getRemoteAuth(): import("./libs/remote-env.js").RemoteAuthState;
+  openRemoteAuthUrl(input: { url: string }): boolean;
   adoptRemoteEnv(): import("./libs/remote-env.js").AdoptedState;
   updateSettings(update: SettingsUpdate): AppSettings;
   listSavedConnections(): SavedConnection[];

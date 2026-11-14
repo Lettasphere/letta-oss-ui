@@ -91,6 +91,8 @@ function createBridge() {
     deleteSavedConnection: vi.fn(),
     getRemoteAdoption: vi.fn(),
     adoptRemoteEnv: vi.fn(),
+    getRemoteAuth: vi.fn(),
+    openRemoteAuthUrl: vi.fn(),
   } satisfies Record<keyof AppBridge, unknown>;
 }
 

@@ -38,6 +38,51 @@ export type RemoteEnvState = {
 
 const state: RemoteEnvState = { running: false, effectiveName: null, connectionId: null };
 
+/**
+ * The spawn's OAuth device-flow, parsed from its stdout:
+ *   "Opening your browser to sign in..." → pending
+ *   "If it didn't open, visit: <url>"    → url captured
+ *   "Your code: <code>"                  → user code captured
+ *   "Authenticated successfully."        → done
+ *   poll timeout / exit                  → failed
+ */
+export type RemoteAuthState =
+  | { status: "idle" }
+  | { status: "pending"; url: string | null; userCode: string | null }
+  | { status: "done" }
+  | { status: "failed"; error: string | null };
+
+let authState: RemoteAuthState = { status: "idle" };
+const authListeners = new Set<(s: RemoteAuthState) => void>();
+
+export function remoteAuthState(): RemoteAuthState {
+  return authState;
+}
+
+export function onRemoteAuthChange(listener: (s: RemoteAuthState) => void): () => void {
+  authListeners.add(listener);
+  return () => authListeners.delete(listener);
+}
+
+function setAuthState(next: RemoteAuthState): void {
+  authState = next;
+  for (const listener of authListeners) listener(next);
+}
+
+/** Parse one stdout chunk for the device-auth flow markers. */
+function feedAuthParser(chunk: string): void {
+  const url = chunk.match(/If it didn't open, visit:\s*(\S+)/)?.[1];
+  const code = chunk.match(/Your code:\s*(\S+)/)?.[1];
+  if (url || code) {
+    setAuthState({
+      status: "pending",
+      url: url ?? (authState.status === "pending" ? authState.url : null),
+      userCode: code ?? (authState.status === "pending" ? authState.userCode : null),
+    });
+  }
+  if (/Authenticated successfully/.test(chunk)) setAuthState({ status: "done" });
+}
+
 export function remoteEnvState(): RemoteEnvState {
   if (adopted !== null && typeof adopted === "object" && adopted.kind === "owned") {
     const s = state;
@@ -125,6 +170,7 @@ export function ensureRemoteEnv(env?: Record<string, string>): { running: boolea
 
   child.stdout?.on("data", (chunk: unknown) => {
     banner = (banner + String(chunk)).slice(-4_000);
+    feedAuthParser(banner.slice(-600));
     const path = banner.match(/Log file:\s*(\S+)/)?.[1];
     if (path && !logPath) {
       logPath = path;
@@ -144,6 +190,8 @@ export function ensureRemoteEnv(env?: Record<string, string>): { running: boolea
       clearInterval(identityTimer);
       identityTimer = null;
     }
+    if (authState.status === "pending") setAuthState({ status: "failed", error: "The sign-in ended before completing." });
+    else if (authState.status !== "done") setAuthState({ status: "idle" });
     state.running = false;
     state.effectiveName = null;
     state.connectionId = null;

@@ -107,6 +107,12 @@ type AppState = {
    * Key: `${conversationKey}|${targetKey}` — switching environment switches
    * the effective folder instead of leaking one target's path to another. */
   envCwdOverrides: Record<string, string>;
+  /** The spawn's OAuth device-flow state (remote-env mode sign-in). */
+  remoteAuth:
+    | { status: "idle" }
+    | { status: "pending"; url: string | null; userCode: string | null }
+    | { status: "done" }
+    | { status: "failed"; error: string | null };
   computers: ComputerSummary[];
   computersLoading: boolean;
   computersError: string | null;
@@ -212,6 +218,7 @@ const CLEARED = {
   computersError: null,
   envOverrides: {},
   envCwdOverrides: {},
+  remoteAuth: { status: "idle" },
   providers: null,
   view: "chat",
   memory: null,
@@ -243,6 +250,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   handleEvent: (event) => {
     switch (event.type) {
+      case "remote_auth":
+        set({ remoteAuth: event.auth });
+        return;
       case "connection": {
         const previous = get().connection;
         set({ connection: event.state });
