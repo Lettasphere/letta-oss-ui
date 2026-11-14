@@ -198,7 +198,24 @@ export function EnvironmentPicker() {
                   <span className="h-1.5 w-1.5 rounded-full bg-accent" title="online" />
                   {adoption.name}
                 </span>
-                <span className="ml-auto text-[10px] text-muted">adopted</span>
+                <span className="ml-auto flex items-center gap-2">
+                  {((): boolean => {
+                    const pick =
+                      envOverride && typeof envOverride === "object"
+                        ? (envOverride as { deviceId?: string; connectionId?: string })
+                        : null;
+                    if (!pick) return false;
+                    // Exact lease match, else machine-follows (online row on
+                    // the picked device when the picked lease is dead).
+                    if (pick.connectionId === adoption.connectionId) return true;
+                    const pickConnLive = computers.some(
+                      (c) =>
+                        (c as { connectionId?: string }).connectionId === pick.connectionId,
+                    );
+                    return !pickConnLive && pick.deviceId === adoption.deviceId;
+                  })() && <span className="text-xs text-accent">current</span>}
+                  <span className="text-[10px] text-muted">adopted</span>
+                </span>
               </button>
             </>
           )}
