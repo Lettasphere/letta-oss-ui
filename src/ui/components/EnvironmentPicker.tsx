@@ -93,39 +93,6 @@ export function EnvironmentPicker() {
   // The adopted row's deviceId, resolved from the computers list by
   // connectionId — adoption picks must carry the REAL deviceId (an empty
   // one makes downstream selectors fall through to the sandbox path).
-  const pickedDeviceId =
-    envOverride && typeof envOverride === "object" && "deviceId" in envOverride
-      ? envOverride.deviceId
-      : null;
-  const current =
-    envOverride === null || envOverride === undefined
-      ? ""
-      : typeof envOverride === "string"
-        ? envOverride
-        : (() => {
-            // A pick frozen at click time can outlive its registration
-            // (adopted remote died → replacement spawned). Labels follow the
-            // MACHINE: the picked connectionId when still live, else the
-            // online registration on the picked deviceId — never the stale
-            // name from the original pick.
-            const pick = envOverride as {
-              deviceId?: string;
-              connectionId?: string;
-              name?: string;
-            };
-            const byConn = pick.connectionId
-              ? computers.find(
-                  (c) => (c as { connectionId?: string }).connectionId === pick.connectionId,
-                )
-              : undefined;
-            if (byConn) return byConn.name;
-            const online = computers.find(
-              (c) => pick.deviceId && c.deviceId === pick.deviceId && c.status === "online",
-            );
-            if (online) return online.name;
-            return pick.name ?? "device";
-          })();
-
   // Re-registrations can create several records for one machine; collapse
   // exact deviceId duplicates (prefer the online record).
   const dedupedComputers = computers
@@ -287,14 +254,30 @@ export function EnvironmentPicker() {
                   {computer.name}
                 </span>
                 {((): boolean => {
-                  const pickedConn =
-                    envOverride && typeof envOverride === "object" && "connectionId" in envOverride
-                      ? envOverride.connectionId
+                  const pick =
+                    envOverride && typeof envOverride === "object"
+                      ? (envOverride as { deviceId?: string; connectionId?: string })
                       : null;
                   const rowConn = (computer as { connectionId?: string }).connectionId ?? null;
-                  // Same device: only the picked CONNECTION is current.
-                  if (pickedConn && rowConn) return pickedConn === rowConn;
-                  return computer.deviceId === pickedDeviceId;
+                  // The pick's connectionId may be a DEAD lease (registration
+                  // rotated since click). Current = this row when it IS the
+                  // picked connection, else when it's the ONLINE registration
+                  // on the picked machine (the machine-follows rule).
+                  if (pick?.connectionId && rowConn && pick.connectionId === rowConn) return true;
+                  if (
+                    pick?.deviceId &&
+                    computer.deviceId === pick.deviceId &&
+                    computer.status === "online"
+                  ) {
+                    // Only when the picked connectionId is NOT live anywhere
+                    // (rotated) — otherwise the exact connection wins above.
+                    const pickConnLive = computers.some(
+                      (c) =>
+                        (c as { connectionId?: string }).connectionId === pick.connectionId,
+                    );
+                    return !pickConnLive;
+                  }
+                  return false;
                 })() && <span className="text-xs text-accent">current</span>}
               </button>
             ))}
