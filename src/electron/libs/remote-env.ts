@@ -42,7 +42,12 @@ export function remoteEnvState(): RemoteEnvState {
   if (adopted !== null && typeof adopted === "object" && adopted.kind === "owned") {
     const s = state;
     if (s.connectionId && adopted.connectionId !== s.connectionId) {
-      adopted = { kind: "owned", connectionId: s.connectionId, name: s.effectiveName ?? "" };
+      adopted = {
+        kind: "owned",
+        connectionId: s.connectionId,
+        name: s.effectiveName ?? "",
+        deviceId: adopted.kind === "owned" ? adopted.deviceId : "",
+      };
     }
   }
   return {
@@ -197,8 +202,8 @@ export function stopRemoteEnv(): void {
 
 export type AdoptedState =
   | { kind: "none" }
-  | { kind: "adopted"; connectionId: string; name: string }
-  | { kind: "owned"; connectionId: string; name: string };
+  | { kind: "adopted"; connectionId: string; name: string; deviceId: string }
+  | { kind: "owned"; connectionId: string; name: string; deviceId: string };
 
 let adopted: AdoptedState = { kind: "none" };
 let watchTimer: ReturnType<typeof setInterval> | null = null;
@@ -245,7 +250,12 @@ export async function adoptOrSpawn(
       );
       const external = online.find((row) => !row.name.startsWith("oss-ui@"));
       if (external) {
-        adopted = { kind: "adopted", connectionId: external.connectionId!, name: external.name };
+        adopted = {
+          kind: "adopted",
+          connectionId: external.connectionId!,
+          name: external.name,
+          deviceId: external.deviceId,
+        };
         startWatch(cloud, env);
         return adopted;
       }
@@ -257,7 +267,7 @@ export async function adoptOrSpawn(
   if (spawned.running) {
     // identity arrives async from the spawn log; the existing banner parser
     // fills remoteEnvState(). Adoption state becomes "owned" once known.
-    adopted = { kind: "owned", connectionId: "", name: "" };
+    adopted = { kind: "owned", connectionId: "", name: "", deviceId: deviceId ?? "" };
     startWatch(cloud, env);
   }
   return adopted;
@@ -277,7 +287,7 @@ function startWatch(
       adopted = { kind: "none" };
       stopWatch();
       ensureRemoteEnv(env);
-      adopted = { kind: "owned", connectionId: "", name: "" };
+      adopted = { kind: "owned", connectionId: "", name: "", deviceId: "" };
       startWatch(cloud, env);
       if (wasAdopted) {
         // Surface the handover: renderer polls remoteEnvState + adoption.

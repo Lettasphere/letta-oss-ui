@@ -41,8 +41,8 @@ export function EnvironmentPicker() {
   // death the app spawns its own and the poll below picks up the handover.
   const [adoption, setAdoption] = useState<
     | { kind: "none" }
-    | { kind: "adopted"; connectionId: string; name: string }
-    | { kind: "owned"; connectionId: string; name: string }
+    | { kind: "adopted"; connectionId: string; name: string; deviceId: string }
+    | { kind: "owned"; connectionId: string; name: string; deviceId: string }
   >({ kind: "none" });
 
 
@@ -96,13 +96,6 @@ export function EnvironmentPicker() {
   // The adopted row's deviceId, resolved from the computers list by
   // connectionId — adoption picks must carry the REAL deviceId (an empty
   // one makes downstream selectors fall through to the sandbox path).
-  const adoptedDeviceId =
-    adoption.kind === "adopted"
-      ? (computers.find(
-          (computer) =>
-            (computer as { connectionId?: string }).connectionId === adoption.connectionId,
-        )?.deviceId ?? null)
-      : null;
   const pickedDeviceId =
     envOverride && typeof envOverride === "object" && "deviceId" in envOverride
       ? envOverride.deviceId
@@ -194,7 +187,7 @@ export function EnvironmentPicker() {
                 type="button"
                 onClick={() =>
                   choose({
-                    ...(adoptedDeviceId ? { deviceId: adoptedDeviceId } : {}),
+                    deviceId: adoption.deviceId,
                     connectionId: adoption.connectionId,
                     name: adoption.name,
                   })
