@@ -175,7 +175,16 @@ if (!app.requestSingleInstanceLock()) {
     });
   });
 
-  app.on("window-all-closed", () => {
+  app.on("will-quit", () => {
+  // Adopted (external) registrations survive the app; owned ones die with it.
+  try {
+    require("./libs/remote-env.js").shutdownAdoption();
+  } catch {
+    // module not loaded — nothing to stop
+  }
+});
+
+app.on("window-all-closed", () => {
     if (!isMac) app.quit();
   });
 

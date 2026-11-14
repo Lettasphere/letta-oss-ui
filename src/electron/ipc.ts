@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain } from "electron";
+import { BrowserWindow, dialog, ipcMain, shell } from "electron";
 import type { AppEvent, AppRequests } from "./types.js";
 import {
   applyPermissionMode,
@@ -26,7 +26,35 @@ import {
   writeMemoryFile,
 } from "./libs/memory.js";
 import { connectProvider, disconnectProvider, listModels, listProviders } from "./libs/providers.js";
-import { getSettings, updateSettings } from "./libs/settings.js";
+import {
+  deleteSavedConnection,
+  getConversationCwd,
+  getSettings,
+  listSavedConnections,
+  load,
+  save,
+  saveCurrentConnection,
+  switchSavedConnection,
+  updateSettings,
+} from "./libs/settings.js";
+import { getConversationEnv, listComputers, setConversationEnv } from "./libs/env.js";
+import {
+  clearBrowseCache,
+  getDefaultDirectory,
+  listRemoteDirectory,
+} from "./libs/remote-browse.js";
+import {
+  adoptOrSpawn,
+  onAdoptionChange,
+  onRemoteAuthChange,
+  remoteAuthState,
+  defaultRemoteEnvName,
+  ensureRemoteEnv,
+  remoteAdoptionState,
+  remoteEnvState,
+  shutdownAdoption,
+  stopRemoteEnv,
+} from "./libs/remote-env.js";
 import { describeError } from "./libs/transcript.js";
 import { validateEventFrame } from "./util.js";
 
@@ -44,6 +72,85 @@ export function broadcast(event: AppEvent): void {
 
 const handlers: Handlers = {
   getSettings,
+  listComputers: () => listComputers(),
+  getConversationEnv,
+  setConversationEnv: (input) => setConversationEnv(input.conversationId, input.selector),
+  getExecutionMode: () => load().executionMode ?? "local",
+  getRemoteEnvName: () => load().remoteEnvName ?? "",
+  listRemoteDirectory: (input) => listRemoteDirectory(input.selector, input.path),
+  clearBrowseCache: () => clearBrowseCache(),
+  getDefaultDirectory: (input) =>
+    getDefaultDirectory(input.selector),
+  getTargetFolder: (input) => {
+    const stored = load();
+    const key = input.targetKey;
+    return stored.targetFolders?.[key] ?? null;
+  },
+  setTargetFolder: (input) => {
+    const stored = load();
+    const targetFolders = { ...(stored.targetFolders ?? {}) };
+    if (input.folder) targetFolders[input.targetKey] = input.folder;
+    else delete targetFolders[input.targetKey];
+    save({ ...stored, targetFolders });
+    return input.folder ?? null;
+  },
+  getConversationCwd: (conversationId) => getConversationCwd(conversationId),
+  setRemoteEnvName: (input) => {
+    const stored = load();
+    save({ ...stored, remoteEnvName: input.name.trim() || defaultRemoteEnvName() });
+    // A renamed registration restarts so the new name takes effect cleanly.
+    stopRemoteEnv();
+    if ((load().executionMode ?? "local") === "remote-env") {
+      ensureRemoteEnv({
+        ...(stored.apiKey && !stored.apiKey.startsWith("enc:") ? { LETTA_API_KEY: stored.apiKey } : {}),
+      });
+    }
+    return load().remoteEnvName ?? "";
+  },
+  setExecutionMode: (mode) => {
+    const stored = load();
+    save({ ...stored, executionMode: mode });
+    if (mode === "remote-env") {
+      const config = { ...stored };
+      ensureRemoteEnv({
+        ...(config.apiKey ? { LETTA_API_KEY: decodeStoredSecret(config.apiKey) } : {}),
+      });
+    }
+    if (mode !== "remote-env") {
+      shutdownAdoption();
+      stopRemoteEnv();
+    }
+    void reconnect();
+    return mode;
+  },
+  getRemoteAdoption: () => remoteAdoptionState(),
+  getRemoteAuth: () => remoteAuthState(),
+  openRemoteAuthUrl: (input) => {
+    if (input.url && /^https:\/\//.test(input.url)) void shell.openExternal(input.url);
+    return true;
+  },
+  adoptRemoteEnv: async () => {
+    const { getConnectionConfig } = await import("./libs/settings.js");
+    const config = getConnectionConfig();
+    const { LettaAgentClient } = await import("@letta-ai/letta-agent-sdk");
+    const cloud = new LettaAgentClient({
+      backend: "cloud",
+      ...(config.apiKey ? { apiKey: config.apiKey } : {}),
+      ...(config.apiBaseUrl ? { apiBaseUrl: config.apiBaseUrl } : {}),
+    });
+    return adoptOrSpawn(cloud, {
+      ...(config.apiKey ? { LETTA_API_KEY: config.apiKey } : {}),
+    });
+  },
+  getRemoteEnvStatus: () => remoteEnvStatusSafe(),
+  listSavedConnections,
+  saveCurrentConnection,
+  switchSavedConnection: (input) => {
+    const result = switchSavedConnection(input.id);
+    void reconnect();
+    return result;
+  },
+  deleteSavedConnection: (input) => deleteSavedConnection(input.id),
   updateSettings: (update) => {
     const { connectionChanged } = updateSettings(update);
     if (update.permissionMode) applyPermissionMode();
@@ -84,7 +191,20 @@ const handlers: Handlers = {
   },
 };
 
+function decodeStoredSecret(encoded: string | undefined): string | undefined {
+  if (!encoded) return undefined;
+  // settings stores enc:-prefixed safeStorage blobs; the plain fallback is used as-is.
+  return encoded.startsWith("enc:") ? undefined : encoded;
+}
+
+function remoteEnvStatusSafe() {
+  const s = remoteEnvState();
+  return { running: s.running, effectiveName: s.effectiveName, connectionId: s.connectionId };
+}
+
 export function registerIpc(): void {
+  onRemoteAuthChange((auth) => broadcast({ type: "remote_auth", auth }));
+  onAdoptionChange((adoption) => broadcast({ type: "remote_adoption", adoption }));
   for (const [name, handler] of Object.entries(handlers)) {
     ipcMain.handle(`app:${name}`, async (event, ...args: unknown[]) => {
       // Errors cross the bridge as data so the renderer sees the real message

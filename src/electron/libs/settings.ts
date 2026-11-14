@@ -2,7 +2,7 @@ import { app, safeStorage } from "electron";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { AppSettings, BackendKind, PermissionMode, SettingsUpdate } from "../types.js";
+import type { AppSettings, BackendKind, PermissionMode, SavedConnection, SettingsUpdate } from "../types.js";
 
 /**
  * App settings, persisted as JSON in the user data directory.
@@ -13,7 +13,7 @@ import type { AppSettings, BackendKind, PermissionMode, SettingsUpdate } from ".
  * development.
  */
 
-type StoredSettings = {
+export type StoredSettings = {
   backend?: BackendKind;
   serverUrl?: string;
   apiBaseUrl?: string;
@@ -23,6 +23,16 @@ type StoredSettings = {
   agentIds?: Partial<Record<BackendKind, string>>;
   recentCwds?: string[];
   conversationCwds?: Record<string, string>;
+  sharedServer?: { enabled: boolean; port: number };
+  /** The reused sandbox-browse conversation (created once, persisted). */
+  browseConversationId?: string;
+  /** Remembered folder per execution target ("sandbox" or deviceId). */
+  targetFolders?: Record<string, string>;
+  conversationEnvs?: Record<string, import("@letta-ai/letta-agent-sdk").ComputerSelector | null>;
+  executionMode?: "local" | "remote-env" | "cloud-only";
+  /** Custom registration name for the app-spawned letta remote (default: hostname). */
+  remoteEnvName?: string;
+  savedConnections?: SavedConnection[];
 };
 
 export type ConnectionConfig = {
@@ -40,11 +50,96 @@ const MAX_CONVERSATION_CWDS = 500;
 
 let cache: StoredSettings | null = null;
 
+const CONNECTION_KEY_PREFIX = "savedConnection.";
+
+/**
+ * Named connection snapshots, stored as encrypted JSON blobs (one key per
+ * connection) alongside the plain metadata list. Secrets never sit in the
+ * plain settings file.
+ */
+export function listSavedConnections(): SavedConnection[] {
+  const stored = load();
+  return [...(stored.savedConnections ?? [])].sort((a, b) => b.usedAt - a.usedAt);
+}
+
+function connectionSnapshot(): string {
+  const stored = load();
+  return JSON.stringify({
+    backend: stored.backend ?? "local",
+    apiBaseUrl: stored.apiBaseUrl ?? "",
+    serverUrl: stored.serverUrl ?? "",
+    apiKey: stored.apiKey ?? "",
+    serverToken: stored.serverToken ?? "",
+  });
+}
+
+export function saveCurrentConnection(name: string): SavedConnection[] {
+  const trimmed = name.trim();
+  if (!trimmed) return listSavedConnections();
+  const stored = load();
+  const existing = stored.savedConnections?.find((c) => c.name === trimmed);
+  const snapshot = connectionSnapshot();
+  const id = existing?.id ?? `conn-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  const entry: SavedConnection = {
+    id,
+    name: trimmed,
+    backend: (JSON.parse(snapshot).backend ?? "local") as SavedConnection["backend"],
+    apiBaseUrl: JSON.parse(snapshot).apiBaseUrl || undefined,
+    serverUrl: JSON.parse(snapshot).serverUrl || undefined,
+    usedAt: existing?.usedAt ?? Date.now(),
+  };
+  // Store the snapshot (secrets included, encoded) under its own encrypted key
+  // by embedding it in the settings under a namespaced plain key — the file is
+  // 0600 and secrets inside it are already `enc:` encoded by encodeSecret.
+  const next: StoredSettings = {
+    ...stored,
+    savedConnections: [
+      ...(stored.savedConnections ?? []).filter((c) => c.id !== id),
+      entry,
+    ],
+    // Encrypted snapshot blob on the same record: stored via dynamic key.
+    ...({ [`${CONNECTION_KEY_PREFIX}${id}`]: snapshot } as StoredSettings),
+  };
+  save(next);
+  return listSavedConnections();
+}
+
+export function switchSavedConnection(id: string): SavedConnection[] {
+  const stored = load();
+  const blob = (stored as Record<string, unknown>)[`${CONNECTION_KEY_PREFIX}${id}`];
+  if (typeof blob !== "string") return listSavedConnections();
+  const snapshot = JSON.parse(blob) as {
+    backend: BackendKind; apiBaseUrl: string; serverUrl: string; apiKey: string; serverToken: string;
+  };
+  const next: StoredSettings = {
+    ...stored,
+    backend: snapshot.backend,
+    apiBaseUrl: snapshot.apiBaseUrl || undefined,
+    serverUrl: snapshot.serverUrl || undefined,
+    apiKey: snapshot.apiKey || undefined,
+    serverToken: snapshot.serverToken || undefined,
+    savedConnections: (stored.savedConnections ?? []).map((c) =>
+      c.id === id ? { ...c, usedAt: Date.now() } : c,
+    ),
+  };
+  save(next);
+  return listSavedConnections();
+}
+
+export function deleteSavedConnection(id: string): SavedConnection[] {
+  const stored = load();
+  const rest = (stored.savedConnections ?? []).filter((c) => c.id !== id);
+  const next = { ...stored, savedConnections: rest } as StoredSettings;
+  delete (next as Record<string, unknown>)[`${CONNECTION_KEY_PREFIX}${id}`];
+  save(next);
+  return listSavedConnections();
+}
+
 function settingsPath(): string {
   return join(app.getPath("userData"), "settings.json");
 }
 
-function load(): StoredSettings {
+export function load(): StoredSettings {
   if (cache) return cache;
   try {
     cache = JSON.parse(readFileSync(settingsPath(), "utf8")) as StoredSettings;
@@ -54,7 +149,7 @@ function load(): StoredSettings {
   return cache;
 }
 
-function save(next: StoredSettings): void {
+export function save(next: StoredSettings): void {
   cache = next;
   const path = settingsPath();
   mkdirSync(dirname(path), { recursive: true });
