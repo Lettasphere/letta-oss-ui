@@ -39,6 +39,12 @@ export type RemoteEnvState = {
 const state: RemoteEnvState = { running: false, effectiveName: null, connectionId: null };
 
 export function remoteEnvState(): RemoteEnvState {
+  if (adopted !== null && typeof adopted === "object" && adopted.kind === "owned") {
+    const s = state;
+    if (s.connectionId && adopted.connectionId !== s.connectionId) {
+      adopted = { kind: "owned", connectionId: s.connectionId, name: s.effectiveName ?? "" };
+    }
+  }
   return {
     ...state,
     running: state.running && launched !== null && launched.exitCode === null && launched.signalCode === null,
@@ -177,4 +183,143 @@ export function stopRemoteEnv(): void {
   } catch {
     // nothing to clean
   }
+}
+
+// --- Adopt / watch / replace -------------------------------------------------
+
+/**
+ * ADOPT-WATCH-REPLACE: when an online registration already exists on this
+ * machine's deviceId (e.g. the user's own `letta server`), the app adopts it
+ * (displays it, routes to it, NEVER kills it). A websocket watch + heartbeat
+ * detect its death; on death the app immediately spawns its own
+ * oss-ui@<hostname> registration and surfaces the new identity.
+ */
+
+export type AdoptedState =
+  | { kind: "none" }
+  | { kind: "adopted"; connectionId: string; name: string }
+  | { kind: "owned"; connectionId: string; name: string };
+
+let adopted: AdoptedState = { kind: "none" };
+let watchTimer: ReturnType<typeof setInterval> | null = null;
+
+export function remoteAdoptionState(): AdoptedState {
+  return adopted;
+}
+
+/** This machine's deviceId, from the registry (first online connection wins;
+ * offline rows share it). Null when the registry can't be reached. */
+async function thisMachineDeviceId(cloud: import("@letta-ai/letta-agent-sdk").LettaAgentClient): Promise<string | null> {
+  try {
+    const result = await cloud.computers.list({ limit: 50 });
+    // The machine identity is stable across re-registrations; any row whose
+    // connectionName matches this hostname pins it. Fall back: parse from
+    // `letta environments current` is main-process unavailable — instead use
+    // the spawn's own log the next time we own one.
+    const hostname = defaultRemoteEnvName().split("@")[1] ?? "";
+    const match = result.computers.find((c) => c.name === hostname || c.name.startsWith(`${hostname}-`));
+    return match?.deviceId ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Try adopting an existing online registration on this machine. Returns the
+ * adoption state; when nothing is adoptable, falls through to spawning our
+ * own (ensureRemoteEnv) — caller decides.
+ */
+export async function adoptOrSpawn(
+  cloud: import("@letta-ai/letta-agent-sdk").LettaAgentClient,
+  env?: Record<string, string>,
+): Promise<AdoptedState> {
+  // Already have a plan? Keep it (restart-safe within the process).
+  if (adopted.kind !== "none") return adopted;
+
+  const deviceId = await thisMachineDeviceId(cloud);
+  if (deviceId) {
+    try {
+      const rows = (await cloud.computers.list({ limit: 50 })).computers;
+      const online = rows.filter(
+        (row) => row.deviceId === deviceId && row.status === "online" && row.connectionId,
+      );
+      const external = online.find((row) => !row.name.startsWith("oss-ui@"));
+      if (external) {
+        adopted = { kind: "adopted", connectionId: external.connectionId!, name: external.name };
+        startWatch(cloud, env);
+        return adopted;
+      }
+    } catch {
+      // registry unreachable — spawn path handles it
+    }
+  }
+  const spawned = ensureRemoteEnv(env);
+  if (spawned.running) {
+    // identity arrives async from the spawn log; the existing banner parser
+    // fills remoteEnvState(). Adoption state becomes "owned" once known.
+    adopted = { kind: "owned", connectionId: "", name: "" };
+    startWatch(cloud, env);
+  }
+  return adopted;
+}
+
+function startWatch(
+  cloud: import("@letta-ai/letta-agent-sdk").LettaAgentClient,
+  env?: Record<string, string>,
+): void {
+  if (watchTimer) return;
+  watchTimer = setInterval(() => {
+    void (async () => {
+      const alive = await probeRegistrationAlive(cloud);
+      if (alive) return;
+      // Death detected: adopted → replace with our own; owned → respawn.
+      const wasAdopted = adopted.kind === "adopted";
+      adopted = { kind: "none" };
+      stopWatch();
+      ensureRemoteEnv(env);
+      adopted = { kind: "owned", connectionId: "", name: "" };
+      startWatch(cloud, env);
+      if (wasAdopted) {
+        // Surface the handover: renderer polls remoteEnvState + adoption.
+      }
+    })();
+  }, 30_000);
+  watchTimer.unref?.();
+}
+
+function stopWatch(): void {
+  if (watchTimer) {
+    clearInterval(watchTimer);
+    watchTimer = null;
+  }
+}
+
+/** Heartbeat: a one-round-trip registry read of the watched connection. */
+async function probeRegistrationAlive(
+  cloud: import("@letta-ai/letta-agent-sdk").LettaAgentClient,
+): Promise<boolean> {
+  const watchedId =
+    adopted.kind === "adopted" || adopted.kind === "owned" ? adopted.connectionId : null;
+  if (!watchedId) {
+    // Owned registration identity may still be parsing — treat as alive.
+    return adopted.kind === "owned";
+  }
+  try {
+    const rows = (await cloud.computers.list({ limit: 50 })).computers;
+    return rows.some((row) => row.connectionId === watchedId && row.status === "online");
+  } catch {
+    // Registry unreachable is NOT death — keep watching.
+    return true;
+  }
+}
+
+/** Called on app quit: only OUR registration dies with us. */
+export function shutdownAdoption(): void {
+  stopWatch();
+  if (adopted.kind === "adopted") {
+    adopted = { kind: "none" }; // external registration survives
+    return;
+  }
+  adopted = { kind: "none" };
+  stopRemoteEnv();
 }

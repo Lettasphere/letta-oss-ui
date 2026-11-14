@@ -43,7 +43,15 @@ import {
   getDefaultDirectory,
   listRemoteDirectory,
 } from "./libs/remote-browse.js";
-import { defaultRemoteEnvName, ensureRemoteEnv, remoteEnvState, stopRemoteEnv } from "./libs/remote-env.js";
+import {
+  adoptOrSpawn,
+  defaultRemoteEnvName,
+  ensureRemoteEnv,
+  remoteAdoptionState,
+  remoteEnvState,
+  shutdownAdoption,
+  stopRemoteEnv,
+} from "./libs/remote-env.js";
 import { describeError } from "./libs/transcript.js";
 import { validateEventFrame } from "./util.js";
 
@@ -105,9 +113,26 @@ const handlers: Handlers = {
         ...(config.apiKey ? { LETTA_API_KEY: decodeStoredSecret(config.apiKey) } : {}),
       });
     }
-    if (mode !== "remote-env") stopRemoteEnv();
+    if (mode !== "remote-env") {
+      shutdownAdoption();
+      stopRemoteEnv();
+    }
     void reconnect();
     return mode;
+  },
+  getRemoteAdoption: () => remoteAdoptionState(),
+  adoptRemoteEnv: async () => {
+    const { getConnectionConfig } = await import("./libs/settings.js");
+    const config = getConnectionConfig();
+    const { LettaAgentClient } = await import("@letta-ai/letta-agent-sdk");
+    const cloud = new LettaAgentClient({
+      backend: "cloud",
+      ...(config.apiKey ? { apiKey: config.apiKey } : {}),
+      ...(config.apiBaseUrl ? { apiBaseUrl: config.apiBaseUrl } : {}),
+    });
+    return adoptOrSpawn(cloud, {
+      ...(config.apiKey ? { LETTA_API_KEY: config.apiKey } : {}),
+    });
   },
   getRemoteEnvStatus: () => remoteEnvStatusSafe(),
   listSavedConnections,

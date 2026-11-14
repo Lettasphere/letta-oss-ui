@@ -17,6 +17,8 @@ const METHODS = [
   "setRemoteEnvName",
   "setExecutionMode",
   "getRemoteEnvStatus",
+  "getRemoteAdoption",
+  "adoptRemoteEnv",
   "updateSettings",
   "listSavedConnections",
   "saveCurrentConnection",

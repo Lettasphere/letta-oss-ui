@@ -176,9 +176,9 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on("will-quit", () => {
-  // The remote registration is tied to the app's life (execution-mode setting).
+  // Adopted (external) registrations survive the app; owned ones die with it.
   try {
-    require("./libs/remote-env.js").stopRemoteEnv();
+    require("./libs/remote-env.js").shutdownAdoption();
   } catch {
     // module not loaded — nothing to stop
   }

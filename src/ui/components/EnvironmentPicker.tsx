@@ -36,10 +36,19 @@ export function EnvironmentPicker() {
     effectiveName: string | null;
     connectionId: string | null;
   } | null>(null);
+  // Adoption: when the app rides an EXTERNAL registration (this machine,
+  // not app-spawned), THIS MACHINE shows it with an adopted hint; on its
+  // death the app spawns its own and the poll below picks up the handover.
+  const [adoption, setAdoption] = useState<
+    | { kind: "none" }
+    | { kind: "adopted"; connectionId: string; name: string }
+    | { kind: "owned"; connectionId: string; name: string }
+  >({ kind: "none" });
 
   useEffect(() => {
     void useAppStore.getState().refreshExecutionMode();
     void window.bridge.getRemoteEnvStatus().then(setOwnRemote);
+    void window.bridge.getRemoteAdoption().then(setAdoption);
   }, []);
 
   // Mode can flip mid-session (Settings Save spawns the registration AFTER
@@ -53,6 +62,7 @@ export function EnvironmentPicker() {
         setOwnRemote(status);
         if (status.running && status.effectiveName) clearInterval(timer);
       });
+      void window.bridge.getRemoteAdoption().then(setAdoption);
     }, 1500);
     const stop = setTimeout(() => clearInterval(timer), 60_000);
     return () => {
@@ -160,7 +170,29 @@ export function EnvironmentPicker() {
               {effectiveIsLocalApp && <span className="text-xs text-accent">current</span>}
             </button>
           )}
-          {mode === "remote-env" && ownRemote?.running && ownRemote.effectiveName && (
+          {mode === "remote-env" && adoption.kind === "adopted" && (
+            <>
+              <div className="px-3 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted">This machine</div>
+              <button
+                type="button"
+                onClick={() =>
+                  choose({
+                    deviceId: "",
+                    connectionId: adoption.connectionId,
+                    name: adoption.name,
+                  })
+                }
+                className="flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm hover:bg-surface-tertiary"
+              >
+                <span className="flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 rounded-full bg-accent" title="online" />
+                  {adoption.name}
+                </span>
+                <span className="ml-auto text-[10px] text-muted">adopted</span>
+              </button>
+            </>
+          )}
+          {mode === "remote-env" && adoption.kind !== "adopted" && ownRemote?.running && ownRemote.effectiveName && (
             <>
               <div className="px-3 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted">This machine</div>
               <button

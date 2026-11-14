@@ -249,6 +249,8 @@ export type AppRequests = {
   setRemoteEnvName(input: { name: string }): string;
   setExecutionMode(mode: ExecutionMode): ExecutionMode;
   getRemoteEnvStatus(): RemoteEnvStatus;
+  getRemoteAdoption(): import("./libs/remote-env.js").AdoptedState;
+  adoptRemoteEnv(): import("./libs/remote-env.js").AdoptedState;
   updateSettings(update: SettingsUpdate): AppSettings;
   listSavedConnections(): SavedConnection[];
   saveCurrentConnection(name: string): SavedConnection[];

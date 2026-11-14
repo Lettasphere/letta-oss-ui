@@ -23,7 +23,7 @@ import type {
   SendMessageInput,
 } from "../types.js";
 import { startAppServer, type AppServerHandle } from "./app-server.js";
-import { ensureRemoteEnv } from "./remote-env.js";
+import { adoptOrSpawn } from "./remote-env.js";
 import { serverBackend, setControlTarget } from "./control.js";
 import {
   type ConnectionConfig,
@@ -116,6 +116,15 @@ function describeConnectionError(error: unknown, config: ConnectionConfig): stri
   return detail;
 }
 
+function cloudClientForAdoption(): LettaAgentClient {
+  const config = getConnectionConfig();
+  return new LettaAgentClient({
+    backend: "cloud",
+    ...(config.apiKey ? { apiKey: config.apiKey } : {}),
+    ...(config.apiBaseUrl ? { apiBaseUrl: config.apiBaseUrl } : {}),
+  });
+}
+
 async function connect(): Promise<LettaAgentClient> {
   const config = getConnectionConfig();
   setConnection({ status: "connecting", backend: config.backend });
@@ -140,7 +149,9 @@ async function connect(): Promise<LettaAgentClient> {
     // environment (letta server, remote mode), then connect as a cloud
     // client; execution lands on this box's own registration.
     if (!next && mode === "remote-env") {
-      ensureRemoteEnv({
+      // Adopt an existing online registration on this machine when present
+      // (never kills it); otherwise spawn ours. Watch/replace runs inside.
+      void adoptOrSpawn(cloudClientForAdoption(), {
         ...(config.apiKey ? { LETTA_API_KEY: config.apiKey } : {}),
         ...(config.apiBaseUrl ? { LETTA_BASE_URL: config.apiBaseUrl } : {}),
       });
