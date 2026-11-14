@@ -24,7 +24,7 @@ export function EnvironmentPicker() {
 
   const isCloud = connection?.status === "ready" && connection.backend === "cloud";
 
-  const [mode, setMode] = useState<"local" | "remote-env" | "cloud-only">("local");
+  const mode = useAppStore((state) => state.executionMode);
   // An environment is ALWAYS effectively chosen: the explicit pick, else the
   // mode's default. Private mode defaults to this computer's app server;
   // every other mode defaults to the cloud sandbox. Exactly one row is
@@ -38,7 +38,7 @@ export function EnvironmentPicker() {
   } | null>(null);
 
   useEffect(() => {
-    void window.bridge.getExecutionMode().then(setMode);
+    void useAppStore.getState().refreshExecutionMode();
     void window.bridge.getRemoteEnvStatus().then(setOwnRemote);
   }, []);
 
@@ -47,7 +47,7 @@ export function EnvironmentPicker() {
     // Re-read on open: the registration's identity lands ~2s after app
     // start (parsed from the spawn banner), so the mount-time fetch alone
     // would render the section nameless — or not at all.
-    void window.bridge.getExecutionMode().then(setMode);
+    void useAppStore.getState().refreshExecutionMode();
     void window.bridge.getRemoteEnvStatus().then(setOwnRemote);
   }, [open]);
 

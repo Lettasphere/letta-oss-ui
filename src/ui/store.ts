@@ -32,13 +32,14 @@ const api = window.bridge;
 export function selectEffectiveEnvironment(state: {
   activeId: string | null;
   envOverrides: Record<string, ComputerSelectorField | null>;
-}): "local-app" | "sandbox" | "remote" | null {
+  executionMode: "local" | "remote-env" | "cloud-only";
+}): "local-app" | "sandbox" | "remote" {
   const key = state.activeId ?? NEW_CHAT;
   const override = key in state.envOverrides ? state.envOverrides[key] : undefined;
   if (override === null) return "sandbox";
-  if (override === undefined) return null; // caller applies the mode default
-  // Any explicit selector (string name or object) means a remote computer.
-  return "remote";
+  if (override !== undefined) return "remote"; // any explicit selector
+  // No explicit pick: the mode default IS the effective environment.
+  return state.executionMode === "local" ? "local-app" : "sandbox";
 }
 
 function labelForComputer(
@@ -99,6 +100,9 @@ type AppState = {
   agentsLoaded: boolean;
   agentId: string | null;
   models: ModelOption[];
+  /** App execution mode (what runs locally) — shared so every surface
+   * (environment chip, pickers) reacts to Settings changes instantly. */
+  executionMode: "local" | "remote-env" | "cloud-only";
   computers: ComputerSummary[];
   computersLoading: boolean;
   computersError: string | null;
@@ -159,6 +163,7 @@ type AppState = {
   setCwd: (cwd: string) => void;
   setModel: (handle: string) => void;
   refreshComputers: () => Promise<void>;
+  refreshExecutionMode: () => Promise<void>;
   pickEnvironment: (selector: ComputerSelectorField | null | undefined) => void;
   setDraft: (text: string) => void;
   setNotice: (notice: string | null) => void;
@@ -194,6 +199,7 @@ const CLEARED = {
   agentsLoaded: false,
   agentId: null,
   models: [],
+  executionMode: "local",
   computers: [],
   computersLoading: false,
   computersError: null,
@@ -317,6 +323,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const [agents, settings] = await Promise.all([api.listAgents(), api.getSettings()]);
       set({ agents, agentsLoaded: true, settings });
       void get().refreshModels();
+      void get().refreshExecutionMode();
       const connection = get().connection;
       if (connection?.status === "ready" && connection.providers) void get().loadProviders();
 
@@ -576,6 +583,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   saveSettings: async (update) => {
     set({ settings: await api.updateSettings(update) });
+    // Mode may have been applied by the dialog alongside these settings.
+    void get().refreshExecutionMode();
   },
 
   loadProviders: async () => {
@@ -653,6 +662,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({
       cwdOverrides: { ...state.cwdOverrides, [state.activeId ?? NEW_CHAT]: cwd },
     })),
+
+  refreshExecutionMode: async () => {
+    try {
+      set({ executionMode: await api.getExecutionMode() });
+    } catch {
+      // keep current
+    }
+  },
 
   refreshComputers: async () => {
     set({ computersLoading: true, computersError: null });
