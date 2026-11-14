@@ -54,9 +54,11 @@ function FolderMenu({ cwd }: { cwd: string }) {
     // folder while this one resolves.
     setTargetFolder(null);
     setFolderResolving(true);
+    console.log('[chip] resolving target', targetKey);
     void window.bridge
       .getTargetFolder({ targetKey })
       .then((remembered) => {
+        console.log('[chip] remembered:', remembered);
         if (remembered) {
           setTargetFolder(remembered);
           return;
@@ -66,7 +68,10 @@ function FolderMenu({ cwd }: { cwd: string }) {
           .getDefaultDirectory({
             selector: targetDeviceId ? { deviceId: targetDeviceId } : null,
           })
-          .then((def) => setTargetFolder(def))
+          .then((def) => {
+            console.log('[chip] discovered default:', def);
+            setTargetFolder(def);
+          })
           .catch(() => setTargetFolder(null));
       })
       .catch(() => setTargetFolder(null))
