@@ -94,12 +94,12 @@ export function remoteEnvState(): RemoteEnvState {
   if (adopted !== null && typeof adopted === "object" && adopted.kind === "owned") {
     const s = state;
     if (s.connectionId && adopted.connectionId !== s.connectionId) {
-      adopted = {
+      setAdopted({
         kind: "owned",
         connectionId: s.connectionId,
         name: s.effectiveName ?? "",
         deviceId: adopted.kind === "owned" ? adopted.deviceId : "",
-      };
+      });
     }
   }
   return {
@@ -277,6 +277,18 @@ export type AdoptedState =
 let adopted: AdoptedState = { kind: "none" };
 let watchTimer: ReturnType<typeof setInterval> | null = null;
 
+const adoptionListeners = new Set<(s: AdoptedState) => void>();
+
+export function onAdoptionChange(listener: (s: AdoptedState) => void): () => void {
+  adoptionListeners.add(listener);
+  return () => adoptionListeners.delete(listener);
+}
+
+function setAdopted(next: AdoptedState): void {
+  adopted = next;
+  for (const listener of adoptionListeners) listener(next);
+}
+
 export function remoteAdoptionState(): AdoptedState {
   return adopted;
 }
@@ -336,7 +348,7 @@ export async function adoptOrSpawn(
   if (spawned.running) {
     // identity arrives async from the spawn log; the existing banner parser
     // fills remoteEnvState(). Adoption state becomes "owned" once known.
-    adopted = { kind: "owned", connectionId: "", name: "", deviceId: deviceId ?? "" };
+    setAdopted({ kind: "owned", connectionId: "", name: "", deviceId: deviceId ?? "" });
     startWatch(cloud, env);
   }
   return adopted;
@@ -353,10 +365,10 @@ function startWatch(
       if (alive) return;
       // Death detected: adopted → replace with our own; owned → respawn.
       const wasAdopted = adopted.kind === "adopted";
-      adopted = { kind: "none" };
+      setAdopted({ kind: "none" });
       stopWatch();
       ensureRemoteEnv(env, "replacement");
-      adopted = { kind: "owned", connectionId: "", name: "", deviceId: "" };
+      setAdopted({ kind: "owned", connectionId: "", name: "", deviceId: "" });
       startWatch(cloud, env);
       if (wasAdopted) {
         // Surface the handover: renderer polls remoteEnvState + adoption.
@@ -396,9 +408,9 @@ async function probeRegistrationAlive(
 export function shutdownAdoption(): void {
   stopWatch();
   if (adopted.kind === "adopted") {
-    adopted = { kind: "none" }; // external registration survives
+    setAdopted({ kind: "none" }); // external registration survives
     return;
   }
-  adopted = { kind: "none" };
+  setAdopted({ kind: "none" });
   stopRemoteEnv();
 }

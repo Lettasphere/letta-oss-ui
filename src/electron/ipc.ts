@@ -45,6 +45,7 @@ import {
 } from "./libs/remote-browse.js";
 import {
   adoptOrSpawn,
+  onAdoptionChange,
   onRemoteAuthChange,
   remoteAuthState,
   defaultRemoteEnvName,
@@ -203,6 +204,7 @@ function remoteEnvStatusSafe() {
 
 export function registerIpc(): void {
   onRemoteAuthChange((auth) => broadcast({ type: "remote_auth", auth }));
+  onAdoptionChange((adoption) => broadcast({ type: "remote_adoption", adoption }));
   for (const [name, handler] of Object.entries(handlers)) {
     ipcMain.handle(`app:${name}`, async (event, ...args: unknown[]) => {
       // Errors cross the bridge as data so the renderer sees the real message

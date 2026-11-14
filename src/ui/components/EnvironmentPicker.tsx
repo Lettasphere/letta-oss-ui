@@ -39,17 +39,15 @@ export function EnvironmentPicker() {
   // Adoption: when the app rides an EXTERNAL registration (this machine,
   // not app-spawned), THIS MACHINE shows it with an adopted hint; on its
   // death the app spawns its own and the poll below picks up the handover.
-  const [adoption, setAdoption] = useState<
-    | { kind: "none" }
-    | { kind: "adopted"; connectionId: string; name: string; deviceId: string }
-    | { kind: "owned"; connectionId: string; name: string; deviceId: string }
-  >({ kind: "none" });
+  // Event-driven from the main process (remote_adoption broadcasts) — the
+  // handover (adopted dies → owned replacement) updates the picker instantly.
+  const adoption = useAppStore((state) => state.remoteAdoption);
 
 
   useEffect(() => {
     void useAppStore.getState().refreshExecutionMode();
     void window.bridge.getRemoteEnvStatus().then(setOwnRemote);
-    void window.bridge.getRemoteAdoption().then(setAdoption);
+    void useAppStore.getState().refreshExecutionMode();
   }, []);
 
   // Mode can flip mid-session (Settings Save spawns the registration AFTER
@@ -63,7 +61,6 @@ export function EnvironmentPicker() {
         setOwnRemote(status);
         if (status.running && status.effectiveName) clearInterval(timer);
       });
-      void window.bridge.getRemoteAdoption().then(setAdoption);
     }, 1500);
     const stop = setTimeout(() => clearInterval(timer), 60_000);
     return () => {

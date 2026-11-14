@@ -108,6 +108,11 @@ type AppState = {
    * the effective folder instead of leaking one target's path to another. */
   envCwdOverrides: Record<string, string>;
   /** The spawn's OAuth device-flow state (remote-env mode sign-in). */
+  /** Live adoption state (owned vs adopted registration) — event-driven. */
+  remoteAdoption:
+    | { kind: "none" }
+    | { kind: "adopted"; connectionId: string; name: string; deviceId: string }
+    | { kind: "owned"; connectionId: string; name: string; deviceId: string };
   remoteAuth:
     | { status: "idle" }
     | { status: "pending"; url: string | null; userCode: string | null; reason: "mode-switch" | "replacement" }
@@ -218,6 +223,7 @@ const CLEARED = {
   computersError: null,
   envOverrides: {},
   envCwdOverrides: {},
+  remoteAdoption: { kind: "none" },
   remoteAuth: { status: "idle" },
   providers: null,
   view: "chat",
@@ -250,6 +256,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   handleEvent: (event) => {
     switch (event.type) {
+      case "remote_adoption":
+        set({ remoteAdoption: event.adoption });
+        return;
       case "remote_auth":
         set({ remoteAuth: event.auth });
         return;
