@@ -37,12 +37,7 @@ function FolderMenu({ cwd }: { cwd: string }) {
   const envOverride = useAppStore((state) =>
     activeId ? state.envOverrides[activeId] : state.envOverrides[NEW_CHAT],
   );
-  // Chip shows a path only when it was picked FOR this remote target via the
-  // browse dialog (cwdOverrides) — never the conversation's local-machine path.
-  const remoteCwd = useAppStore((state) => {
-    const key = activeId ?? NEW_CHAT;
-    return state.cwdOverrides[key] ?? null;
-  });
+
 
   // Per-target folder: remembered pick, else the target's discovered default.
   // The label mirrors what the session will actually use.
@@ -51,10 +46,13 @@ function FolderMenu({ cwd }: { cwd: string }) {
       ? envOverride.deviceId
       : null;
   const targetKey = useAppStore(targetKeyFor);
-  const [targetFolder, setTargetFolder] = useState<string | null>(remoteCwd);
+  const [targetFolder, setTargetFolder] = useState<string | null>(null);
   const [folderResolving, setFolderResolving] = useState(false);
   useEffect(() => {
     if (effectiveEnv !== "sandbox" && effectiveEnv !== "remote") return;
+    // Target changed: clear immediately — never show the previous target's
+    // folder while this one resolves.
+    setTargetFolder(null);
     setFolderResolving(true);
     void window.bridge
       .getTargetFolder({ targetKey })
