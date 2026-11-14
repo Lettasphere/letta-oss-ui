@@ -123,8 +123,14 @@ export function EnvironmentPicker() {
         ) === index,
     )
     .filter((computer) => {
-      // The app's own registration renders in THIS MACHINE above — never
-      // list it twice. Match by connectionId (exact), name as fallback.
+      // Whatever THIS MACHINE is showing — the app's own registration OR an
+      // adopted external one — must not repeat in YOUR COMPUTERS.
+      if (mode === "remote-env" && adoption.kind === "adopted") {
+        if ((computer as { connectionId?: string }).connectionId === adoption.connectionId) {
+          return false;
+        }
+        return computer.name !== adoption.name;
+      }
       if (mode !== "remote-env" || !ownRemote?.effectiveName) return true;
       if (
         ownRemote.connectionId &&

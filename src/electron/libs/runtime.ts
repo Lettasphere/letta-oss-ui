@@ -547,7 +547,12 @@ export async function sendMessage(input: SendMessageInput): Promise<Conversation
       cwd: input.cwd,
       permissionMode: getPermissionMode(),
       ...(input.model ? { model: input.model } : {}),
-      ...(input.computer ? { computer: input.computer } : {}),
+      // computer overrides are only valid on cloud sessions (the SDK rejects
+      // them on local/remote clients). In private/local mode execution is
+      // this machine's app server by construction — the override is void.
+      ...((sdk as { backend?: string }).backend === "cloud" && input.computer
+        ? { computer: input.computer }
+        : {}),
       canUseTool: (toolName, toolInput, context) =>
         new Promise<CanUseToolResponse>((resolve) => {
           const request: ApprovalRequest = {
