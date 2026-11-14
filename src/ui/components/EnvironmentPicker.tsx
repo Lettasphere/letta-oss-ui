@@ -103,14 +103,27 @@ export function EnvironmentPicker() {
 
   // Re-registrations can create several records for one machine; collapse
   // exact deviceId duplicates (prefer the online record).
-  const dedupedComputers = computers.filter(
-    (computer, index) =>
-      computers.findIndex(
-        (other) =>
-          other.deviceId === computer.deviceId &&
-          (other.status === "online" || other === computer),
-      ) === index,
-  );
+  const dedupedComputers = computers
+    .filter(
+      (computer, index) =>
+        computers.findIndex(
+          (other) =>
+            other.deviceId === computer.deviceId &&
+            (other.status === "online" || other === computer),
+        ) === index,
+    )
+    .filter((computer) => {
+      // The app's own registration renders in THIS MACHINE above — never
+      // list it twice. Match by connectionId (exact), name as fallback.
+      if (mode !== "remote-env" || !ownRemote?.effectiveName) return true;
+      if (
+        ownRemote.connectionId &&
+        (computer as { connectionId?: string }).connectionId === ownRemote.connectionId
+      ) {
+        return false;
+      }
+      return computer.name !== ownRemote.effectiveName;
+    });
 
   if (!isCloud) return null;
 
