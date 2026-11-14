@@ -26,7 +26,17 @@ import {
   writeMemoryFile,
 } from "./libs/memory.js";
 import { connectProvider, disconnectProvider, listModels, listProviders } from "./libs/providers.js";
-import { getConversationCwd, getSettings, load, save, updateSettings } from "./libs/settings.js";
+import {
+  deleteSavedConnection,
+  getConversationCwd,
+  getSettings,
+  listSavedConnections,
+  load,
+  save,
+  saveCurrentConnection,
+  switchSavedConnection,
+  updateSettings,
+} from "./libs/settings.js";
 import { getConversationEnv, listComputers, setConversationEnv } from "./libs/env.js";
 import {
   clearBrowseCache,
@@ -100,6 +110,14 @@ const handlers: Handlers = {
     return mode;
   },
   getRemoteEnvStatus: () => remoteEnvStatusSafe(),
+  listSavedConnections,
+  saveCurrentConnection,
+  switchSavedConnection: (input) => {
+    const result = switchSavedConnection(input.id);
+    void reconnect();
+    return result;
+  },
+  deleteSavedConnection: (input) => deleteSavedConnection(input.id),
   updateSettings: (update) => {
     const { connectionChanged } = updateSettings(update);
     if (update.permissionMode) applyPermissionMode();

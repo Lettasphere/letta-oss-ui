@@ -217,7 +217,13 @@ export function EnvironmentPicker() {
               <button
                 key={computer.id}
                 type="button"
-                onClick={() => choose({ deviceId: computer.deviceId })}
+                onClick={() =>
+                  choose({
+                    deviceId: computer.deviceId,
+                    connectionId: (computer as { connectionId?: string }).connectionId ?? "",
+                    name: computer.name,
+                  })
+                }
                 className="flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm hover:bg-surface-tertiary"
               >
                 <span className="flex items-center gap-2">
@@ -227,9 +233,16 @@ export function EnvironmentPicker() {
                   />
                   {computer.name}
                 </span>
-                {computer.deviceId === pickedDeviceId && (
-                  <span className="text-xs text-accent">current</span>
-                )}
+                {((): boolean => {
+                  const pickedConn =
+                    envOverride && typeof envOverride === "object" && "connectionId" in envOverride
+                      ? envOverride.connectionId
+                      : null;
+                  const rowConn = (computer as { connectionId?: string }).connectionId ?? null;
+                  // Same device: only the picked CONNECTION is current.
+                  if (pickedConn && rowConn) return pickedConn === rowConn;
+                  return computer.deviceId === pickedDeviceId;
+                })() && <span className="text-xs text-accent">current</span>}
               </button>
             ))}
           </div>
