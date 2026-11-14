@@ -74,7 +74,10 @@ function FolderMenu({ cwd }: { cwd: string }) {
           })
           .catch(() => setTargetFolder(null));
       })
-      .catch(() => setTargetFolder(null))
+      .catch((failure) => {
+        console.log('[chip] FAILED:', String(failure).slice(0, 200));
+        setTargetFolder(null);
+      })
       .finally(() => setFolderResolving(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveEnv, targetKey]);
