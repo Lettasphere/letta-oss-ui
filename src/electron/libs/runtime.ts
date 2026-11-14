@@ -23,6 +23,7 @@ import type {
   SendMessageInput,
 } from "../types.js";
 import { startAppServer, type AppServerHandle } from "./app-server.js";
+import { adoptOrSpawn } from "./remote-env.js";
 import { serverBackend, setControlTarget } from "./control.js";
 import {
   type ConnectionConfig,
@@ -30,6 +31,7 @@ import {
   getConnectionConfig,
   getConversationCwd,
   getPermissionMode,
+  load,
   getSettings,
   rememberCwd,
   setAgentId,
@@ -114,15 +116,53 @@ function describeConnectionError(error: unknown, config: ConnectionConfig): stri
   return detail;
 }
 
+function cloudClientForAdoption(): LettaAgentClient {
+  const config = getConnectionConfig();
+  return new LettaAgentClient({
+    backend: "cloud",
+    ...(config.apiKey ? { apiKey: config.apiKey } : {}),
+    ...(config.apiBaseUrl ? { apiBaseUrl: config.apiBaseUrl } : {}),
+  });
+}
+
 async function connect(): Promise<LettaAgentClient> {
   const config = getConnectionConfig();
   setConnection({ status: "connecting", backend: config.backend });
 
   let next: LettaAgentClient | null = null;
   let owned: AppServerHandle | null = null;
+  const mode = load().executionMode ?? "local";
   try {
     let detail: string;
-    if (config.backend === "remote") {
+    // Execution mode 3 — cloud-only: direct cloud client. Sessions run in
+    // the SDK-managed sandbox or on a registered computer (per-conversation
+    // pick); no local process, no local file access.
+    if (mode === "cloud-only") {
+      next = new LettaAgentClient({
+        backend: "cloud",
+        ...(config.apiKey ? { apiKey: config.apiKey } : {}),
+        ...(config.apiBaseUrl ? { apiBaseUrl: config.apiBaseUrl } : {}),
+      });
+      detail = "Letta Cloud (cloud-only)";
+    }
+    // Execution mode 2 — remote-env: register this machine as a remote
+    // environment (letta server, remote mode), then connect as a cloud
+    // client; execution lands on this box's own registration.
+    if (!next && mode === "remote-env") {
+      // Adopt an existing online registration on this machine when present
+      // (never kills it); otherwise spawn ours. Watch/replace runs inside.
+      void adoptOrSpawn(cloudClientForAdoption(), {
+        ...(config.apiKey ? { LETTA_API_KEY: config.apiKey } : {}),
+        ...(config.apiBaseUrl ? { LETTA_BASE_URL: config.apiBaseUrl } : {}),
+      });
+      next = new LettaAgentClient({
+        backend: "cloud",
+        ...(config.apiKey ? { apiKey: config.apiKey } : {}),
+        ...(config.apiBaseUrl ? { apiBaseUrl: config.apiBaseUrl } : {}),
+      });
+      detail = "Letta Cloud (via this machine's remote registration)";
+    }
+    if (config.backend === "remote" && !next) {
       if (!config.serverUrl) throw new Error("Add your Letta server URL in Settings.");
       next = new LettaAgentClient({
         backend: "remote",
@@ -507,6 +547,12 @@ export async function sendMessage(input: SendMessageInput): Promise<Conversation
       cwd: input.cwd,
       permissionMode: getPermissionMode(),
       ...(input.model ? { model: input.model } : {}),
+      // computer overrides are only valid on cloud sessions (the SDK rejects
+      // them on local/remote clients). In private/local mode execution is
+      // this machine's app server by construction — the override is void.
+      ...((sdk as { backend?: string }).backend === "cloud" && input.computer
+        ? { computer: input.computer }
+        : {}),
       canUseTool: (toolName, toolInput, context) =>
         new Promise<CanUseToolResponse>((resolve) => {
           const request: ApprovalRequest = {

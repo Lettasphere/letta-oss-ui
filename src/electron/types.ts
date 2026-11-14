@@ -40,6 +40,19 @@ export type SettingsUpdate = {
   agentId?: string | null;
 };
 
+import type { ComputerSummary, ComputerSelectorField, ConversationEnv } from "./libs/env.js";
+export type { ComputerSummary, ComputerSelectorField, ConversationEnv };
+/** A saved connection: a named snapshot of the flat connection settings. */
+export type SavedConnection = {
+  id: string;
+  name: string;
+  backend: BackendKind;
+  apiBaseUrl?: string;
+  serverUrl?: string;
+  /** Unix ms of the last switch to this connection (most-recent sorts first). */
+  usedAt: number;
+};
+
 export type ConnectionState =
   | { status: "connecting"; backend: BackendKind }
   | {
@@ -188,10 +201,15 @@ export type SendMessageInput = {
   otid: string;
   cwd: string;
   model?: string;
+  /** Execution target for this turn: a computer selector (sandbox = omit). */
+  computer?: import("@letta-ai/letta-agent-sdk").ComputerSelector;
 };
 
 /** Main -> renderer push events. */
+// (remote_auth variant appended below)
 export type AppEvent =
+  | { type: "remote_adoption"; adoption: import("./libs/remote-env.js").AdoptedState }
+  | { type: "remote_auth"; auth: import("./libs/remote-env.js").RemoteAuthState }
   | { type: "connection"; state: ConnectionState }
   | { type: "turn.started"; conversationId: string }
   | { type: "turn.rows"; conversationId: string; rows: ChatRow[] }
@@ -204,9 +222,45 @@ export type AppEvent =
   | { type: "menu"; command: "new-chat" | "settings" };
 
 /** Renderer -> main requests. Every method is an `ipcRenderer.invoke` round trip. */
+export type ExecutionMode = "local" | "remote-env" | "cloud-only";
+
+export type RemoteEnvStatus = { running: boolean; effectiveName: string | null; connectionId: string | null };
+
 export type AppRequests = {
   getSettings(): AppSettings;
+  listComputers(): ComputerSummary[];
+  getConversationEnv(conversationId: string): ConversationEnv;
+  setConversationEnv(input: {
+    conversationId: string;
+    /** null = cloud sandbox; undefined = inherit the mode default. */
+    selector: ComputerSelectorField | null | undefined;
+  }): ConversationEnv;
+  getExecutionMode(): ExecutionMode;
+  getRemoteEnvName(): string;
+  listRemoteDirectory(input: {
+    /** null = the SDK-managed sandbox; else a computer selector. */
+    selector: import("@letta-ai/letta-agent-sdk").ComputerSelector | null;
+    path: string;
+  }): string[];
+  getConversationCwd(conversationId: string): string | null;
+  clearBrowseCache(): void;
+  getDefaultDirectory(input: {
+    selector: import("@letta-ai/letta-agent-sdk").ComputerSelector | null;
+  }): string;
+  getTargetFolder(input: { targetKey: string }): string | null;
+  setTargetFolder(input: { targetKey: string; folder: string | null }): string | null;
+  setRemoteEnvName(input: { name: string }): string;
+  setExecutionMode(mode: ExecutionMode): ExecutionMode;
+  getRemoteEnvStatus(): RemoteEnvStatus;
+  getRemoteAdoption(): import("./libs/remote-env.js").AdoptedState;
+  getRemoteAuth(): import("./libs/remote-env.js").RemoteAuthState;
+  openRemoteAuthUrl(input: { url: string }): boolean;
+  adoptRemoteEnv(): import("./libs/remote-env.js").AdoptedState;
   updateSettings(update: SettingsUpdate): AppSettings;
+  listSavedConnections(): SavedConnection[];
+  saveCurrentConnection(name: string): SavedConnection[];
+  switchSavedConnection(input: { id: string }): SavedConnection[];
+  deleteSavedConnection(input: { id: string }): SavedConnection[];
   getConnection(): ConnectionState;
   reconnect(): ConnectionState;
   listAgents(): AgentSummary[];
