@@ -102,15 +102,29 @@ export function EnvironmentPicker() {
       ? ""
       : typeof envOverride === "string"
         ? envOverride
-        : envOverride && "name" in envOverride
-          ? envOverride.name
-          : (() => {
-              const match = computers.find(
-                (computer) =>
-                  envOverride && "deviceId" in envOverride && computer.deviceId === envOverride.deviceId,
-              );
-              return match?.name ?? "device";
-            })();
+        : (() => {
+            // A pick frozen at click time can outlive its registration
+            // (adopted remote died → replacement spawned). Labels follow the
+            // MACHINE: the picked connectionId when still live, else the
+            // online registration on the picked deviceId — never the stale
+            // name from the original pick.
+            const pick = envOverride as {
+              deviceId?: string;
+              connectionId?: string;
+              name?: string;
+            };
+            const byConn = pick.connectionId
+              ? computers.find(
+                  (c) => (c as { connectionId?: string }).connectionId === pick.connectionId,
+                )
+              : undefined;
+            if (byConn) return byConn.name;
+            const online = computers.find(
+              (c) => pick.deviceId && c.deviceId === pick.deviceId && c.status === "online",
+            );
+            if (online) return online.name;
+            return pick.name ?? "device";
+          })();
 
   // Re-registrations can create several records for one machine; collapse
   // exact deviceId duplicates (prefer the online record).
