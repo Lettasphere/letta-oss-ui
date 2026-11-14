@@ -179,6 +179,9 @@ type AppState = {
   setModel: (handle: string) => void;
   refreshComputers: () => Promise<void>;
   refreshExecutionMode: () => Promise<void>;
+  /** Seed adoption state from the main process (events only fire on CHANGE —
+   * adoption during connect() predates the renderer's subscription). */
+  refreshRemoteAdoption: () => void;
   pickEnvironment: (selector: ComputerSelectorField | null | undefined) => void;
   /** Set the working folder for the ACTIVE conversation on the ACTIVE
    * environment target (remote/sandbox flows). */
@@ -267,6 +270,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({ connection: event.state });
         if (event.state.status === "ready" && previous?.status !== "ready") {
           void get().refreshAgents();
+          get().refreshRemoteAdoption();
         } else if (event.state.status !== "ready" && previous?.status === "ready") {
           // Agents and conversations belong to the backend that just went away.
           set(CLEARED);
@@ -351,6 +355,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ agents, agentsLoaded: true, settings });
       void get().refreshModels();
       void get().refreshExecutionMode();
+      get().refreshRemoteAdoption();
       const connection = get().connection;
       if (connection?.status === "ready" && connection.providers) void get().loadProviders();
 
@@ -689,6 +694,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({
       cwdOverrides: { ...state.cwdOverrides, [state.activeId ?? NEW_CHAT]: cwd },
     })),
+
+  refreshRemoteAdoption: () => {
+    void window.bridge.getRemoteAdoption().then((adoption) => {
+      set({ remoteAdoption: adoption });
+    });
+  },
 
   refreshExecutionMode: async () => {
     try {

@@ -89,7 +89,7 @@ function createBridge() {
     saveCurrentConnection: vi.fn(),
     switchSavedConnection: vi.fn(),
     deleteSavedConnection: vi.fn(),
-    getRemoteAdoption: vi.fn(),
+    getRemoteAdoption: vi.fn().mockResolvedValue({ kind: "none" }),
     adoptRemoteEnv: vi.fn(),
     getRemoteAuth: vi.fn(),
     openRemoteAuthUrl: vi.fn(),
