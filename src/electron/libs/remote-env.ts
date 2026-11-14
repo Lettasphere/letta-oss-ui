@@ -331,12 +331,12 @@ export async function adoptOrSpawn(
       );
       const external = online.find((row) => !row.name.startsWith("oss-ui@"));
       if (external) {
-        adopted = {
+        setAdopted({
           kind: "adopted",
           connectionId: external.connectionId!,
           name: external.name,
           deviceId: external.deviceId,
-        };
+        });
         startWatch(cloud, env);
         return adopted;
       }
