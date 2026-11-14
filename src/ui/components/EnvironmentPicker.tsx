@@ -117,13 +117,15 @@ export function EnvironmentPicker() {
 
   // Re-registrations can create several records for one machine; collapse
   // exact deviceId duplicates (prefer the online record).
+  // ONLINE machines only: offline rows are unreachable, their stale names
+  // pile up (re-registration history), and mid-handover they're pure noise.
+  // A machine reappears the instant it reconnects.
   const dedupedComputers = computers
+    .filter((computer) => computer.status === "online")
     .filter(
       (computer, index) =>
         computers.findIndex(
-          (other) =>
-            other.deviceId === computer.deviceId &&
-            (other.status === "online" || other === computer),
+          (other) => other.deviceId === computer.deviceId && other.status === "online",
         ) === index,
     )
     .filter((computer) => {
@@ -218,6 +220,11 @@ export function EnvironmentPicker() {
                 </span>
               </button>
             </>
+          )}
+          {mode === "remote-env" && adoption.kind !== "adopted" && !(ownRemote?.running && ownRemote.effectiveName) && (
+            <div className="px-3 pb-1 pt-1.5 text-xs text-muted">
+              Reconnecting this machine…
+            </div>
           )}
           {mode === "remote-env" && adoption.kind !== "adopted" && ownRemote?.running && ownRemote.effectiveName && (
             <>
