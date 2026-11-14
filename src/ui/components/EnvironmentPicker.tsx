@@ -45,6 +45,7 @@ export function EnvironmentPicker() {
     | { kind: "owned"; connectionId: string; name: string }
   >({ kind: "none" });
 
+
   useEffect(() => {
     void useAppStore.getState().refreshExecutionMode();
     void window.bridge.getRemoteEnvStatus().then(setOwnRemote);
@@ -92,6 +93,16 @@ export function EnvironmentPicker() {
   }, [open, isCloud, refreshComputers]);
 
   const computers = useAppStore((state) => state.computers);
+  // The adopted row's deviceId, resolved from the computers list by
+  // connectionId — adoption picks must carry the REAL deviceId (an empty
+  // one makes downstream selectors fall through to the sandbox path).
+  const adoptedDeviceId =
+    adoption.kind === "adopted"
+      ? (computers.find(
+          (computer) =>
+            (computer as { connectionId?: string }).connectionId === adoption.connectionId,
+        )?.deviceId ?? null)
+      : null;
   const pickedDeviceId =
     envOverride && typeof envOverride === "object" && "deviceId" in envOverride
       ? envOverride.deviceId
@@ -183,7 +194,7 @@ export function EnvironmentPicker() {
                 type="button"
                 onClick={() =>
                   choose({
-                    deviceId: "",
+                    ...(adoptedDeviceId ? { deviceId: adoptedDeviceId } : {}),
                     connectionId: adoption.connectionId,
                     name: adoption.name,
                   })

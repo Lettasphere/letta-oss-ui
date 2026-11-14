@@ -63,7 +63,9 @@ function FolderMenu({ cwd }: { cwd: string }) {
         }
         // No remembered pick: discover and show the target's own default.
         return window.bridge
-          .getDefaultDirectory({ selector: targetDeviceId ? { deviceId: targetDeviceId } : null })
+          .getDefaultDirectory({
+            selector: targetDeviceId ? { deviceId: targetDeviceId } : null,
+          })
           .then((def) => setTargetFolder(def))
           .catch(() => setTargetFolder(null));
       })
