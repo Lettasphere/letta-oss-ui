@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { folderName, shortPath } from "../lib/format";
-import { NEW_CHAT, selectCwd, selectEffectiveEnvironment, selectModel, useAppStore } from "../store";
+import { NEW_CHAT, selectCwd, selectEffectiveEnvironment, selectModel, targetKeyFor, useAppStore } from "../store";
 import type { PermissionMode } from "../types";
 import { EnvironmentPicker } from "./EnvironmentPicker";
 import { ModelPicker } from "./ModelPicker";
@@ -30,6 +30,7 @@ function FolderMenu({ cwd }: { cwd: string }) {
   const recentCwds = useAppStore((state) => state.settings?.recentCwds ?? NO_FOLDERS);
   const setCwd = useAppStore((state) => state.setCwd);
   const pickCwd = useAppStore((state) => state.pickCwd);
+  const setEnvCwd = useAppStore((state) => state.setEnvCwd);
 
   const [browsing, setBrowsing] = useState(false);
   const activeId = useAppStore((state) => state.activeId);
@@ -49,7 +50,7 @@ function FolderMenu({ cwd }: { cwd: string }) {
     envOverride && typeof envOverride === "object" && "deviceId" in envOverride
       ? envOverride.deviceId
       : null;
-  const targetKey = effectiveEnv === "sandbox" ? "sandbox" : targetDeviceId ?? "remote";
+  const targetKey = useAppStore(targetKeyFor);
   const [targetFolder, setTargetFolder] = useState<string | null>(remoteCwd);
   const [folderResolving, setFolderResolving] = useState(false);
   useEffect(() => {
@@ -119,7 +120,9 @@ function FolderMenu({ cwd }: { cwd: string }) {
             selector={selector}
             startPath={cwd}
             onChoose={(path) => {
-              setCwd(path);
+              // Per-environment folder: switching targets never leaks this
+              // path into another environment's session.
+              setEnvCwd(path);
               setTargetFolder(path);
               void window.bridge
                 .setTargetFolder({ targetKey, folder: path })

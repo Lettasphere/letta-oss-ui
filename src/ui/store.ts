@@ -103,6 +103,10 @@ type AppState = {
   /** App execution mode (what runs locally) — shared so every surface
    * (environment chip, pickers) reacts to Settings changes instantly. */
   executionMode: "local" | "remote-env" | "cloud-only";
+  /** Working folder PER conversation PER environment (sandbox|deviceId).
+   * Key: `${conversationKey}|${targetKey}` — switching environment switches
+   * the effective folder instead of leaking one target's path to another. */
+  envCwdOverrides: Record<string, string>;
   computers: ComputerSummary[];
   computersLoading: boolean;
   computersError: string | null;
@@ -165,6 +169,9 @@ type AppState = {
   refreshComputers: () => Promise<void>;
   refreshExecutionMode: () => Promise<void>;
   pickEnvironment: (selector: ComputerSelectorField | null | undefined) => void;
+  /** Set the working folder for the ACTIVE conversation on the ACTIVE
+   * environment target (remote/sandbox flows). */
+  setEnvCwd: (folder: string) => void;
   setDraft: (text: string) => void;
   setNotice: (notice: string | null) => void;
   setSettingsOpen: (open: boolean) => void;
@@ -204,6 +211,7 @@ const CLEARED = {
   computersLoading: false,
   computersError: null,
   envOverrides: {},
+  envCwdOverrides: {},
   providers: null,
   view: "chat",
   memory: null,
@@ -707,6 +715,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
+  setEnvCwd: (folder) => {
+    set((state) => {
+      const key = state.activeId ?? NEW_CHAT;
+      const target = targetKeyFor(state);
+      return { envCwdOverrides: { ...state.envCwdOverrides, [`${key}|${target}`]: folder } };
+    });
+  },
+
   setModel: (handle) =>
     set((state) => ({
       modelOverrides: { ...state.modelOverrides, [state.activeId ?? NEW_CHAT]: handle },
@@ -725,18 +741,60 @@ export const useAppStore = create<AppState>((set, get) => ({
 
 type Selectable = Pick<
   AppState,
-  "settings" | "conversations" | "cwdOverrides" | "modelOverrides" | "agents" | "agentId"
+  | "settings"
+  | "conversations"
+  | "cwdOverrides"
+  | "envCwdOverrides"
+  | "envOverrides"
+  | "executionMode"
+  | "activeId"
+  | "modelOverrides"
+  | "agents"
+  | "agentId"
 >;
 
 /** Working directory the next message in a chat will run in. */
+export function targetKeyFor(state: {
+  activeId?: string | null;
+  envOverrides?: Record<string, ComputerSelectorField | null>;
+  executionMode?: "local" | "remote-env" | "cloud-only";
+} & Record<string, unknown>): string {
+  const activeId = state.activeId ?? null;
+  const overrides = state.envOverrides ?? {};
+  const mode = state.executionMode ?? "local";
+  const key = activeId ?? NEW_CHAT;
+  const override = key in overrides ? overrides[key] : undefined;
+  if (override === null) return "sandbox";
+  if (override !== undefined && typeof override === "object" && "deviceId" in override && override.deviceId) {
+    return String(override.deviceId);
+  }
+  if (override !== undefined) return "remote";
+  return mode === "local" ? "local" : "sandbox";
+}
+
+/** The folder the NEXT message uses: environment-scoped pick first, else the
+ * legacy conversation cwd (local/default flows), else recent. */
+export function selectEffectiveCwd(state: Selectable, key: string): string {
+  const target = targetKeyFor(state);
+  const envScoped = state.envCwdOverrides?.[`${key}|${target}`];
+  if (envScoped) return envScoped;
+  // Local/default environments keep the conversation cwd semantics.
+  if (target === "local") {
+    return (
+      state.cwdOverrides[key] ??
+      state.conversations.find((item) => item.id === key)?.cwd ??
+      state.settings?.recentCwds[0] ??
+      state.settings?.defaultCwd ??
+      ""
+    );
+  }
+  // Remote/sandbox with no pick yet: empty — the session uses the target's
+  // own default (boot_working_directory), NOT another environment's path.
+  return "";
+}
+
 export function selectCwd(state: Selectable, key: string): string {
-  return (
-    state.cwdOverrides[key] ??
-    state.conversations.find((item) => item.id === key)?.cwd ??
-    state.settings?.recentCwds[0] ??
-    state.settings?.defaultCwd ??
-    ""
-  );
+  return selectEffectiveCwd(state, key);
 }
 
 /** Model the next message in a chat will use. */
