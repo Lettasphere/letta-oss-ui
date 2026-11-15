@@ -45,6 +45,7 @@ import {
 } from "./libs/remote-browse.js";
 import {
   adoptOrSpawn,
+  handoverState,
   onAdoptionChange,
   onHandoverChange,
   onRemoteAuthChange,
@@ -125,6 +126,7 @@ const handlers: Handlers = {
     return mode;
   },
   getRemoteAdoption: () => remoteAdoptionState(),
+  getRemoteHandover: () => handoverState(),
   getRemoteAuth: () => remoteAuthState(),
   openRemoteAuthUrl: (input) => {
     if (input.url && /^https:\/\//.test(input.url)) void shell.openExternal(input.url);

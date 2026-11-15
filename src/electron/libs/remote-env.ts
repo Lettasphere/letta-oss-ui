@@ -182,6 +182,19 @@ export function ensureRemoteEnv(
       if (name && conn && identityTimer) {
         clearTimeout(identityTimer);
         identityTimer = null;
+        // Identity landed: complete the lifecycle NOW — complete the owned
+        // adoption state and end any switching handover. This must not wait
+        // for remoteEnvState() to be polled (the poll can stop before this
+        // fires, stranding the UI in "connection lost").
+        if (adopted.kind === "owned" && adopted.connectionId !== conn) {
+          setAdopted({
+            kind: "owned",
+            connectionId: conn,
+            name,
+            deviceId: adopted.deviceId,
+          });
+        }
+        if (handover.phase === "switching") setHandover({ phase: "stable" });
       }
     } catch {
       // log not flushed yet — retry on the next tick

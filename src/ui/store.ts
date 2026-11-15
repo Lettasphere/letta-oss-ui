@@ -184,6 +184,7 @@ type AppState = {
   /** Seed adoption state from the main process (events only fire on CHANGE —
    * adoption during connect() predates the renderer's subscription). */
   refreshRemoteAdoption: () => void;
+  refreshRemoteHandover: () => void;
   pickEnvironment: (selector: ComputerSelectorField | null | undefined) => void;
   /** Set the working folder for the ACTIVE conversation on the ACTIVE
    * environment target (remote/sandbox flows). */
@@ -363,6 +364,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       void get().refreshModels();
       void get().refreshExecutionMode();
       get().refreshRemoteAdoption();
+      get().refreshRemoteHandover();
       const connection = get().connection;
       if (connection?.status === "ready" && connection.providers) void get().loadProviders();
 
@@ -701,6 +703,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({
       cwdOverrides: { ...state.cwdOverrides, [state.activeId ?? NEW_CHAT]: cwd },
     })),
+
+  refreshRemoteHandover: () => {
+    void window.bridge.getRemoteHandover().then((handover) => {
+      set({ remoteHandover: handover });
+    });
+  },
 
   refreshRemoteAdoption: () => {
     void window.bridge.getRemoteAdoption().then((adoption) => {

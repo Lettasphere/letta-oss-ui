@@ -254,6 +254,7 @@ export type AppRequests = {
   setExecutionMode(mode: ExecutionMode): ExecutionMode;
   getRemoteEnvStatus(): RemoteEnvStatus;
   getRemoteAdoption(): import("./libs/remote-env.js").AdoptedState;
+  getRemoteHandover(): import("./libs/remote-env.js").HandoverState;
   getRemoteAuth(): import("./libs/remote-env.js").RemoteAuthState;
   openRemoteAuthUrl(input: { url: string }): boolean;
   adoptRemoteEnv(): import("./libs/remote-env.js").AdoptedState;

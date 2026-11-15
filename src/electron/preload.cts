@@ -18,6 +18,7 @@ const METHODS = [
   "setExecutionMode",
   "getRemoteEnvStatus",
   "getRemoteAdoption",
+  "getRemoteHandover",
   "getRemoteAuth",
   "openRemoteAuthUrl",
   "adoptRemoteEnv",
