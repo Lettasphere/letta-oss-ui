@@ -291,7 +291,16 @@ export function EnvironmentPicker() {
                     (c) =>
                       (c as { connectionId?: string }).connectionId === pick.connectionId,
                   );
-                  return !pickConnLive && pick.deviceId === (ownRemote as { deviceId?: string }).deviceId;
+                  // ownRemote has no deviceId — resolve this machine's device
+                  // from the registry row matching our connectionId, else the
+                  // adoption state's deviceId.
+                  const myDevice =
+                    computers.find(
+                      (c) =>
+                        (c as { connectionId?: string }).connectionId ===
+                        ownRemote?.connectionId,
+                    )?.deviceId ?? (adoption.kind !== "none" ? adoption.deviceId : null);
+                  return !pickConnLive && !!myDevice && pick.deviceId === myDevice;
                 })() && <span className="text-xs text-accent">current</span>}
               </button>
             </>
