@@ -316,7 +316,7 @@ export function EnvironmentPicker() {
               {effectiveIsSandbox && <span className="text-xs text-accent">current</span>}
             </button>
             <div className="px-3 pb-0.5 pt-2 text-[10px] font-medium uppercase tracking-wide text-muted">Your computers</div>
-            {(() => {            {computersLoading && <div className="px-3 py-2 text-xs text-muted">Loading computers…</div>}
+            {computersLoading && <div className="px-3 py-2 text-xs text-muted">Loading computers…</div>}
             {computersError && dedupedComputers.length === 0 && (
               <div className="px-3 py-2 text-xs text-muted">{computersError}</div>
             )}
@@ -380,6 +380,7 @@ export function EnvironmentPicker() {
                   return false;
                 })() && <span className="text-xs text-accent">current</span>}
               </button>
+            ))}
           </div>
         </div>
       )}
