@@ -82,6 +82,8 @@ export function EnvironmentPicker() {
 
   useEffect(() => {
     if (!open || !isCloud) return;
+    // Always refresh on open — the list is the picker's world model and
+    // cheap to re-read; handover races must never leave it stale.
     void refreshComputers();
     const onPointerDown = (event: PointerEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);

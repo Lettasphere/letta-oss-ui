@@ -269,6 +269,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         return;
       case "remote_adoption":
         set({ remoteAdoption: event.adoption });
+        // Every adoption rotation (adopt → owned → adopt-back) re-reads the
+        // fleet list — the world changed.
+        void get().refreshComputers();
         return;
       case "remote_auth":
         set({ remoteAuth: event.auth });
