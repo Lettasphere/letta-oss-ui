@@ -388,8 +388,34 @@ function startWatch(
   if (watchTimer) return;
   watchTimer = setInterval(() => {
     void (async () => {
-      const alive = await probeRegistrationAlive(cloud);
-      if (alive) return;
+      const probe = await probeWithRows(cloud);
+      if (probe.alive) {
+        // Hand-back: while we OWN a fallback registration, an external one
+        // (the machine's primary — e.g. the user's own `letta server`)
+        // coming back online takes precedence. Adopt it, retire our spawn.
+        if (adopted.kind === "owned") {
+          const ownedConnectionId = adopted.connectionId;
+          const external = probe.rows?.find(
+            (row) =>
+              row.status === "online" &&
+              row.connectionId &&
+            !row.name.startsWith("oss-ui@") &&
+              row.connectionId !== ownedConnectionId,
+          );
+          if (external) {
+            setHandover({ phase: "switching", since: Date.now(), reason: "disconnected" });
+            stopRemoteEnv();
+            setAdopted({
+              kind: "adopted",
+              connectionId: external.connectionId!,
+              name: external.name,
+              deviceId: external.deviceId,
+            });
+            setHandover({ phase: "stable" });
+          }
+        }
+        return;
+      }
       // Death detected: adopted → replace with our own; owned → respawn.
       const wasAdopted = adopted.kind === "adopted";
       setHandover({ phase: "switching", since: Date.now(), reason: "disconnected" });
@@ -413,23 +439,35 @@ function stopWatch(): void {
   }
 }
 
-/** Heartbeat: a one-round-trip registry read of the watched connection. */
-async function probeRegistrationAlive(
+/** Probe + the rows it read (one registry read serves both purposes). */
+async function probeWithRows(
   cloud: import("@letta-ai/letta-agent-sdk").LettaAgentClient,
-): Promise<boolean> {
+): Promise<{ alive: boolean; rows?: Awaited<ReturnType<typeof fetchRows>> }> {
   const watchedId =
     adopted.kind === "adopted" || adopted.kind === "owned" ? adopted.connectionId : null;
   if (!watchedId) {
-    // Owned registration identity may still be parsing — treat as alive.
-    return adopted.kind === "owned";
+    return { alive: adopted.kind === "owned" };
   }
   try {
-    const rows = (await cloud.computers.list({ limit: 50 })).computers;
-    return rows.some((row) => row.connectionId === watchedId && row.status === "online");
+    const rows = await fetchRows(cloud);
+    return { alive: rows.some((row) => row.connectionId === watchedId && row.status === "online"), rows };
   } catch {
     // Registry unreachable is NOT death — keep watching.
-    return true;
+    return { alive: true };
   }
+}
+
+type RegistryRow = {
+  deviceId: string;
+  connectionId: string | null;
+  name: string;
+  status: "online" | "offline";
+};
+
+async function fetchRows(
+  cloud: import("@letta-ai/letta-agent-sdk").LettaAgentClient,
+): Promise<RegistryRow[]> {
+  return (await cloud.computers.list({ limit: 50 })).computers;
 }
 
 /** Called on app quit: only OUR registration dies with us. */
