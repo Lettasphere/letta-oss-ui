@@ -727,7 +727,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   refreshComputers: async () => {
     set({ computersLoading: true, computersError: null });
     try {
-      set({ computers: await api.listComputers(), computersLoading: false });
+      const list = await api.listComputers();
+      console.log("[computers] refresh:", list.length, "online:", list.filter((c) => c.status === "online").map((c) => c.name).join(","));
+      set({ computers: list, computersLoading: false });
     } catch (error) {
       set({ computers: [], computersLoading: false, computersError: errorMessage(error) });
     }
