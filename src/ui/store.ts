@@ -734,7 +734,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       console.log("[computers] refresh:", list.length, "online:", list.filter((c) => c.status === "online").map((c) => c.name).join(","));
       set({ computers: list, computersLoading: false });
     } catch (error) {
-      set({ computers: [], computersLoading: false, computersError: errorMessage(error) });
+      // A failed re-read must NOT clobber the last good list (a transient
+      // error during handover races used to blank YOUR COMPUTERS).
+      set({ computersLoading: false, computersError: errorMessage(error) });
     }
   },
 

@@ -292,8 +292,13 @@ export function EnvironmentPicker() {
             </button>
             <div className="px-3 pb-0.5 pt-2 text-[10px] font-medium uppercase tracking-wide text-muted">Your computers</div>
             {computersLoading && <div className="px-3 py-2 text-xs text-muted">Loading computers…</div>}
-            {computersError && (
+            {computersError && dedupedComputers.length === 0 && (
               <div className="px-3 py-2 text-xs text-muted">{computersError}</div>
+            )}
+            {computersError && dedupedComputers.length > 0 && (
+              <div className="px-3 py-1 text-[10px] text-muted" title={computersError}>
+                last refresh failed — showing previous list
+              </div>
             )}
             {!computersLoading &&
               !computersError &&
