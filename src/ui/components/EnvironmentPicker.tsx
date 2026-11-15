@@ -278,6 +278,21 @@ export function EnvironmentPicker() {
                   <span className="h-1.5 w-1.5 rounded-full bg-accent" title="online" />
                   {ownRemote.effectiveName}
                 </span>
+                {((): boolean => {
+                  const pick =
+                    envOverride && typeof envOverride === "object"
+                      ? (envOverride as { deviceId?: string; connectionId?: string })
+                      : null;
+                  if (!pick) return false;
+                  // Machine-follows: the pick's lease may be the dead prior
+                  // registration — current when this machine IS the picked
+                  // machine and the picked lease isn't live elsewhere.
+                  const pickConnLive = computers.some(
+                    (c) =>
+                      (c as { connectionId?: string }).connectionId === pick.connectionId,
+                  );
+                  return !pickConnLive && pick.deviceId === (ownRemote as { deviceId?: string }).deviceId;
+                })() && <span className="text-xs text-accent">current</span>}
               </button>
             </>
           )}
