@@ -113,7 +113,8 @@ export function EnvironmentPicker() {
               (c) => pick.deviceId && c.deviceId === pick.deviceId && c.status === 'online',
             );
             if (online) return online.name;
-            return pick.name ?? 'device';
+            // Picked machine offline: don't parrot the frozen name as if live.
+            return pick.name ? `${pick.name} (offline)` : 'device';
           })();
 
   // Re-registrations can create several records for one machine; collapse

@@ -393,13 +393,17 @@ function startWatch(
         // Hand-back: while we OWN a fallback registration, an external one
         // (the machine's primary — e.g. the user's own `letta server`)
         // coming back online takes precedence. Adopt it, retire our spawn.
-        if (adopted.kind === "owned") {
+        if (adopted.kind === "owned" && adopted.deviceId) {
           const ownedConnectionId = adopted.connectionId;
+          // THIS machine only: hand-back must never adopt a registration
+          // belonging to a different computer (e.g. the user's phone).
+          const myDevice = adopted.deviceId;
           const external = probe.rows?.find(
             (row) =>
               row.status === "online" &&
               row.connectionId &&
-            !row.name.startsWith("oss-ui@") &&
+              row.deviceId === myDevice &&
+              !row.name.startsWith("oss-ui@") &&
               row.connectionId !== ownedConnectionId,
           );
           if (external) {
@@ -412,6 +416,7 @@ function startWatch(
               deviceId: external.deviceId,
             });
             setHandover({ phase: "stable" });
+            return;
           }
         }
         return;
