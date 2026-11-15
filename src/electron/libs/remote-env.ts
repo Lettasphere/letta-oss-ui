@@ -401,7 +401,9 @@ function startWatch(
   if (watchTimer) return;
   watchTimer = setInterval(() => {
     void (async () => {
+      try {
       const probe = await probeWithRows(cloud);
+      console.log("[watch] tick: alive=", probe.alive, "kind=", adopted.kind, "conn=", (adopted as {connectionId?: string}).connectionId?.slice(0, 14), "dev=", (adopted as {deviceId?: string}).deviceId?.slice(0, 10), "ext?", !!probe.rows?.some((r) => r.status === "online" && r.deviceId === (adopted as {deviceId?: string}).deviceId && !r.name.startsWith("oss-ui@")));
       if (probe.alive) {
         // Hand-back: while we OWN a fallback registration, an external one
         // (the machine's primary — e.g. the user's own `letta server`)
@@ -444,6 +446,9 @@ function startWatch(
       startWatch(cloud, env);
       if (wasAdopted) {
         // Surface the handover: renderer polls remoteEnvState + adoption.
+      }
+      } catch (error) {
+        console.log("[watch] tick FAILED:", String(error).slice(0, 150));
       }
     })();
   }, 30_000);
