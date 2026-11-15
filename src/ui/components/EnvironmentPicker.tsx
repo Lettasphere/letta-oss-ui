@@ -307,7 +307,6 @@ export function EnvironmentPicker() {
           )}
           <div className="mt-1 border-t border-border pt-1">
             <div className="px-3 pb-0.5 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted">Cloud</div>
-            {(() => { console.log("[render] cloud section reached"); return null; })()}
             <button
               type="button"
               onClick={() => choose(null)}
@@ -317,8 +316,7 @@ export function EnvironmentPicker() {
               {effectiveIsSandbox && <span className="text-xs text-accent">current</span>}
             </button>
             <div className="px-3 pb-0.5 pt-2 text-[10px] font-medium uppercase tracking-wide text-muted">Your computers</div>
-            {(() => { console.log("[render] fleet: raw", computers.length, "→ dedup", dedupedComputers.length, "loading:", computersLoading, "mode:", mode, "adopt:", adoption.kind); return null; })()}
-            {computersLoading && <div className="px-3 py-2 text-xs text-muted">Loading computers…</div>}
+            {(() => {            {computersLoading && <div className="px-3 py-2 text-xs text-muted">Loading computers…</div>}
             {computersError && dedupedComputers.length === 0 && (
               <div className="px-3 py-2 text-xs text-muted">{computersError}</div>
             )}
@@ -382,7 +380,6 @@ export function EnvironmentPicker() {
                   return false;
                 })() && <span className="text-xs text-accent">current</span>}
               </button>
-            ))}
           </div>
         </div>
       )}
