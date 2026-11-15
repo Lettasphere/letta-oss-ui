@@ -37,6 +37,9 @@ export type RemoteEnvState = {
 };
 
 const state: RemoteEnvState = { running: false, effectiveName: null, connectionId: null };
+/** This machine's deviceId, parsed from the spawn's own log — authoritative
+ * for the hand-back predicate (hostname registry-matching is fragile at boot). */
+let ownDeviceId: string | null = null;
 
 /**
  * The spawn's OAuth device-flow, parsed from its stdout:
@@ -177,8 +180,10 @@ export function ensureRemoteEnv(
       const log = readFileSync(logPath, "utf8");
       const name = log.match(/connectionName:\s*(\S+)/)?.[1];
       const conn = log.match(/connectionId[=:]\s*(conn-\S+)/)?.[1];
+      const dev = log.match(/deviceId:\s*(\S+)/)?.[1];
       if (name) state.effectiveName = name;
       if (conn) state.connectionId = conn;
+      if (dev) ownDeviceId = dev;
       if (name && conn && identityTimer) {
         clearTimeout(identityTimer);
         identityTimer = null;
@@ -186,13 +191,16 @@ export function ensureRemoteEnv(
         // adoption state and end any switching handover. This must not wait
         // for remoteEnvState() to be polled (the poll can stop before this
         // fires, stranding the UI in "connection lost").
-        if (adopted.kind === "owned" && adopted.connectionId !== conn) {
-          setAdopted({
-            kind: "owned",
-            connectionId: conn,
-            name,
-            deviceId: adopted.deviceId,
-          });
+        if (adopted.kind === "owned") {
+          const dev = ownDeviceId ?? adopted.deviceId;
+          if (adopted.connectionId !== conn || adopted.deviceId !== dev) {
+            setAdopted({
+              kind: "owned",
+              connectionId: conn,
+              name,
+              deviceId: dev,
+            });
+          }
         }
         if (handover.phase === "switching") setHandover({ phase: "stable" });
       }
