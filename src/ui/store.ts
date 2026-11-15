@@ -282,9 +282,25 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (event.state.status === "ready" && previous?.status !== "ready") {
           void get().refreshAgents();
           get().refreshRemoteAdoption();
+          get().refreshRemoteHandover();
+          // The fleet registry is account-level and survives connection
+          // cycles — re-read it on every ready transition (handovers trigger
+          // reconnects; without this the CLEARED wipe below left it empty).
+          void get().refreshComputers();
+          void get().refreshExecutionMode();
         } else if (event.state.status !== "ready" && previous?.status === "ready") {
-          // Agents and conversations belong to the backend that just went away.
+          // Agents and conversations belong to the backend that just went
+          // away. Computers do NOT — they're account registry data; keep the
+          // last-good list across the flicker.
+          const keptComputers = get().computers;
+          const keptLoading = get().computersLoading;
+          const keptError = get().computersError;
           set(CLEARED);
+          set({
+            computers: keptComputers,
+            computersLoading: keptLoading,
+            computersError: keptError,
+          });
         }
         break;
       }
