@@ -140,14 +140,15 @@ export function EnvironmentPicker() {
   // ONLINE machines only: offline rows are unreachable, their stale names
   // pile up (re-registration history), and mid-handover they're pure noise.
   // A machine reappears the instant it reconnects.
-  const dedupedComputers = computers
-    .filter((computer) => computer.status === "online")
-    .filter(
-      (computer, index) =>
-        computers.findIndex(
-          (other) => other.deviceId === computer.deviceId && other.status === "online",
-        ) === index,
-    )
+  // Online machines, one row per device. The dedup must run WITHIN the
+  // online subset — searching the full list mismatches indices against
+  // offline duplicate rows and silently drops online machines that have
+  // offline registry twins (re-registration clutter).
+  const onlineComputers = computers.filter((computer) => computer.status === "online");
+  const dedupedComputers = onlineComputers.filter(
+    (computer, index) =>
+      onlineComputers.findIndex((other) => other.deviceId === computer.deviceId) === index,
+  )
     .filter((computer) => {
       // Whatever THIS MACHINE is showing — the app's own registration OR an
       // adopted external one — must not repeat in YOUR COMPUTERS.
@@ -292,7 +293,7 @@ export function EnvironmentPicker() {
               {effectiveIsSandbox && <span className="text-xs text-accent">current</span>}
             </button>
             <div className="px-3 pb-0.5 pt-2 text-[10px] font-medium uppercase tracking-wide text-muted">Your computers</div>
-            {(() => { console.log("[render] fleet reached, rows:", dedupedComputers.length, "loading:", computersLoading, "err:", computersError); return null; })()}
+            {(() => { console.log("[render] fleet: raw", computers.length, "→ dedup", dedupedComputers.length, "loading:", computersLoading, "mode:", mode, "adopt:", adoption.kind); return null; })()}
             {computersLoading && <div className="px-3 py-2 text-xs text-muted">Loading computers…</div>}
             {computersError && dedupedComputers.length === 0 && (
               <div className="px-3 py-2 text-xs text-muted">{computersError}</div>
