@@ -54,7 +54,6 @@ function FolderMenu({ cwd }: { cwd: string }) {
     // folder while this one resolves.
     setTargetFolder(null);
     setFolderResolving(true);
-    console.log('[chip] resolving target', targetKey);
     // 10s timeout: a websocket to a dead lease can hang the chain forever,
     // freezing the chip at "Remote". Losing the race = retry next open.
     const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000));
@@ -62,7 +61,6 @@ function FolderMenu({ cwd }: { cwd: string }) {
       window.bridge
         .getTargetFolder({ targetKey })
         .then((remembered) => {
-          console.log('[chip] remembered:', remembered);
           if (remembered) {
             setTargetFolder(remembered);
             return;
@@ -73,15 +71,11 @@ function FolderMenu({ cwd }: { cwd: string }) {
               selector: targetDeviceId ? { deviceId: targetDeviceId } : null,
             })
             .then((def) => {
-              console.log('[chip] discovered default:', def);
               setTargetFolder(def);
             })
             .catch(() => setTargetFolder(null));
         })
-        .catch((failure) => {
-          console.log('[chip] FAILED:', String(failure).slice(0, 200));
-          setTargetFolder(null);
-        }),
+        .catch(() => setTargetFolder(null)),
       timeout,
     ]).finally(() => setFolderResolving(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -305,9 +299,8 @@ export function Composer({ disabled }: { disabled: boolean }) {
 }
 
 /**
- * Remote/sandbox directory browser. Each listing costs one quick agent turn
- * on the target; results are cached main-process-side, so back-navigation
- * within a session is instant.
+ * Remote/sandbox directory browser. Listings speak the list_in_directory
+ * protocol directly over the target's transport — instant, creates nothing.
  */
 function RemoteBrowseDialog({
   selector,
@@ -331,16 +324,13 @@ function RemoteBrowseDialog({
     setPath(next);
     setLoading(true);
     setError(null);
-    console.log("[browse] listing", JSON.stringify(selector), next);
     void window.bridge
       .listRemoteDirectory({ selector, path: next })
       .then((dirs) => {
-        console.log("[browse] got", dirs.length, "entries for", next, "first:", dirs[0]);
         setEntries(dirs);
         setDirectoriesLoaded(true);
       })
       .catch((failure) => {
-        console.log("[browse] FAILED for", next, String(failure).slice(0, 200));
         setError(failure instanceof Error ? failure.message : String(failure));
       })
       .finally(() => setLoading(false));
@@ -380,7 +370,7 @@ function RemoteBrowseDialog({
         <div className="max-h-64 overflow-y-auto rounded-lg border border-border">
           {loading && (
             <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted">
-              <Spinner className="h-3 w-3" /> Listing… (one quick turn on the target)
+              <Spinner className="h-3 w-3" /> Listing…
             </div>
           )}
           {error && <div className="px-3 py-2 text-sm text-error">{error}</div>}

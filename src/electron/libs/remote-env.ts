@@ -118,7 +118,10 @@ export function remoteEnvState(): RemoteEnvState {
 function sweepStrayRegistrations(): void {
   try {
     const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
-    const pattern = `${"lettasphere/letta-oss-ui/node_modules"}.*electron.*server --env-name`;
+    // Pattern derives from THIS app's resolved CLI path (works dev AND
+    // packaged app.asar.unpacked trees) + the spawn arg — never a user's
+    // own `letta server` (Uncia finding 2).
+    const pattern = `${findCli()}.*server --env-name`;
     execFileSync("pkill", ["-f", pattern], { stdio: "ignore" });
   } catch {
     // no strays, or pkill unavailable — nothing to do
