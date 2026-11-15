@@ -117,6 +117,22 @@ export function EnvironmentPicker() {
             return pick.name ? `${pick.name} (offline)` : 'device';
           })();
 
+  // Convergence loop: while the chip's resolution is DEGRADED (handover in
+  // flight, or the picked machine has no online registration), the registry
+  // view may lag reality — the replacement registration takes seconds to
+  // propagate. One-shot refreshes race that lag and lose. Retry every 3s
+  // until the resolution is clean, then stop. This is what makes the chip
+  // self-heal WITHOUT a click.
+  const resolutionDegraded =
+    handover.phase === "switching" || (envOverride !== null && envOverride !== undefined && current.endsWith("(offline)"));
+  useEffect(() => {
+    if (!resolutionDegraded) return;
+    const timer = setInterval(() => {
+      void useAppStore.getState().refreshComputers();
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [resolutionDegraded]);
+
   // Re-registrations can create several records for one machine; collapse
   // exact deviceId duplicates (prefer the online record).
   // ONLINE machines only: offline rows are unreachable, their stale names
