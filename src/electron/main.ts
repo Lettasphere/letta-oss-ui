@@ -175,7 +175,16 @@ if (!app.requestSingleInstanceLock()) {
     });
   });
 
-  app.on("window-all-closed", () => {
+  app.on("will-quit", () => {
+  // Adopted (external) registrations survive the app; owned ones die with it.
+  try {
+    require("./libs/remote-env.js").shutdownAdoption();
+  } catch {
+    // module not loaded — nothing to stop
+  }
+});
+
+app.on("window-all-closed", () => {
     if (!isMac) app.quit();
   });
 
@@ -186,7 +195,17 @@ if (!app.requestSingleInstanceLock()) {
     if (quitting) return;
     quitting = true;
     const timeout = new Promise((resolve) => setTimeout(resolve, QUIT_TIMEOUT_MS));
-    void Promise.race([disconnect(), timeout]).finally(() => app.exit(0));
+    void Promise.race([disconnect(), timeout]).finally(() => {
+      // app.exit() does NOT emit will-quit — stop the registration here or
+      // the spawned letta server orphans and the machine stays routable
+      // while the app is closed (Uncia finding 1).
+      try {
+        require("./libs/remote-env.js").shutdownAdoption();
+      } catch {
+        // module not loaded — nothing to stop
+      }
+      app.exit(0);
+    });
   });
 
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {

@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { AgentSettingsDialog } from "./components/AgentSettingsDialog";
+import { AuthBanner } from "./components/AuthBanner";
 import { ChatView } from "./components/ChatView";
 import { MemoryView } from "./components/MemoryView";
 import { NewAgentDialog } from "./components/NewAgentDialog";
@@ -61,6 +62,7 @@ export default function App() {
       <SettingsDialog />
       <NewAgentDialog />
       <AgentSettingsDialog />
+      <AuthBanner />
       <Notice />
     </div>
   );

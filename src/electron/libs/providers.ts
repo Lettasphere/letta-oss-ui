@@ -121,8 +121,11 @@ export async function disconnectProvider(input: {
 export async function listModels(refresh = false): Promise<ModelOption[]> {
   const reply = await request<ModelsReply>("list_models", { force: refresh });
   const available = reply.available_handles ? new Set(reply.available_handles) : null;
+  // The catalog can list the same handle multiple times (per region/variant
+  // entries); duplicates would flood the picker's capped result window.
+  const seen = new Set<string>();
   const models = reply.entries
-    .filter((entry) => !available || available.has(entry.handle))
+    .filter((entry) => (!available || available.has(entry.handle)) && !seen.has(entry.handle) && seen.add(entry.handle))
     .map((entry) => ({ id: entry.id, handle: entry.handle, label: entry.label || entry.handle }));
   return await configuredFirst(models);
 }

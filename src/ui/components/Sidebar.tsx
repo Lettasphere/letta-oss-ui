@@ -84,11 +84,17 @@ function AgentSwitcher() {
 function ConversationItem({
   conversation,
   now,
+  pinned,
+  unread,
+  onTogglePin,
   onRename,
   onResume,
 }: {
   conversation: ConversationSummary;
   now: number;
+  pinned: boolean;
+  unread: boolean;
+  onTogglePin: (conversation: ConversationSummary) => void;
   onRename: (conversation: ConversationSummary) => void;
   onResume: (conversation: ConversationSummary) => void;
 }) {
@@ -110,6 +116,8 @@ function ConversationItem({
         className="flex min-w-0 flex-1 items-center gap-2 py-2 pl-2.5 pr-1 text-left outline-none"
       >
         <span className={`min-w-0 flex-1 truncate text-sm ${active ? "text-ink-900" : "text-ink-800"}`}>
+          {unread && <span className="mr-1 inline-block h-2 w-2 shrink-0 rounded-full bg-accent" title="Unread" />}
+          {pinned && <span className="mr-1 text-accent">★</span>}
           {conversation.title || "New chat"}
         </span>
         {running ? (
@@ -133,6 +141,12 @@ function ConversationItem({
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal>
           <DropdownMenu.Content className={menuContent} align="start" sideOffset={6}>
+            <DropdownMenu.Item
+              className={menuItem}
+              onSelect={() => onTogglePin(conversation)}
+            >
+              {pinned ? "Unpin" : "Pin to top"}
+            </DropdownMenu.Item>
             <DropdownMenu.Item className={menuItem} onSelect={() => onRename(conversation)}>
               Rename
             </DropdownMenu.Item>
@@ -263,7 +277,16 @@ function ResumeDialog({
 }
 
 export function Sidebar() {
-  const conversations = useAppStore((state) => state.conversations);
+  const rawConversations = useAppStore((state) => state.conversations);
+  const pinnedConversations = useAppStore((state) => state.pinnedConversations);
+  const readCursors = useAppStore((state) => state.readCursors);
+  const markAllRead = useAppStore((state) => state.markAllRead);
+  const togglePinnedConversation = useAppStore((state) => state.togglePinnedConversation);
+  const conversations = [...rawConversations].sort((a, b) => {
+    const pa = pinnedConversations.includes(a.id) ? 0 : 1;
+    const pb = pinnedConversations.includes(b.id) ? 0 : 1;
+    return pa - pb;
+  });
   const conversationsLoaded = useAppStore((state) => state.conversationsLoaded);
   const agentId = useAppStore((state) => state.agentId);
   const connection = useAppStore((state) => state.connection);
@@ -280,6 +303,13 @@ export function Sidebar() {
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  const [query, setQuery] = useState("");
+  const visibleConversations = query.trim()
+    ? conversations.filter((conversation) =>
+        (conversation.title || "New chat").toLowerCase().includes(query.trim().toLowerCase()),
+      )
+    : conversations;
 
   return (
     <aside className="flex w-[272px] shrink-0 flex-col border-r border-border bg-sidebar">
@@ -308,16 +338,43 @@ export function Sidebar() {
         </button>
       </div>
 
+      {conversations.length > 5 && (
+        <div className="mt-3 flex items-center gap-1.5 px-2.5">
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search chats…"
+            className="min-w-0 flex-1 rounded-lg bg-surface-tertiary px-3 py-1.5 text-sm text-ink-900 placeholder:text-muted focus:outline-none"
+          />
+          {Object.values(readCursors).length > 0 && (
+            <button
+              type="button"
+              onClick={markAllRead}
+              title="Mark all conversations as read"
+              className="shrink-0 rounded-lg px-2 py-1.5 text-xs text-muted hover:bg-surface-tertiary hover:text-ink-900"
+            >
+              Mark all read
+            </button>
+          )}
+        </div>
+      )}
+
       <nav className="mt-3 min-h-0 flex-1 overflow-y-auto px-2.5 pb-2">
-        {agentId && conversationsLoaded && conversations.length === 0 && (
+        {agentId && conversationsLoaded && visibleConversations.length === 0 && query.trim() && (
+          <p className="px-2.5 py-3 text-xs text-muted">No chats match "{query.trim()}".</p>
+        )}
+        {agentId && conversationsLoaded && conversations.length === 0 && !query.trim() && (
           <p className="px-2.5 py-3 text-xs text-muted">No chats yet.</p>
         )}
         <div className="flex flex-col gap-0.5">
-          {conversations.map((conversation) => (
+          {visibleConversations.map((conversation) => (
             <ConversationItem
               key={conversation.id}
               conversation={conversation}
               now={now}
+              pinned={pinnedConversations.includes(conversation.id)}
+              unread={(readCursors[conversation.id] ?? 0) < conversation.updatedAt}
+              onTogglePin={(item) => togglePinnedConversation(item.id)}
               onRename={setRenaming}
               onResume={setResuming}
             />

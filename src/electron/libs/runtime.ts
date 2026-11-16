@@ -23,6 +23,7 @@ import type {
   SendMessageInput,
 } from "../types.js";
 import { startAppServer, type AppServerHandle } from "./app-server.js";
+import { adoptOrSpawn } from "./remote-env.js";
 import { serverBackend, setControlTarget } from "./control.js";
 import {
   type ConnectionConfig,
@@ -30,11 +31,13 @@ import {
   getConnectionConfig,
   getConversationCwd,
   getPermissionMode,
+  load,
   getSettings,
   rememberCwd,
   setAgentId,
 } from "./settings.js";
 import { describeError, mergeHistory, projectHistory, toChatRow } from "./transcript.js";
+import { wireContent, type AttachmentView } from "./attachments.js";
 
 /**
  * Everything that talks to Letta: the SDK client, agent and conversation
@@ -114,15 +117,53 @@ function describeConnectionError(error: unknown, config: ConnectionConfig): stri
   return detail;
 }
 
+function cloudClientForAdoption(): LettaAgentClient {
+  const config = getConnectionConfig();
+  return new LettaAgentClient({
+    backend: "cloud",
+    ...(config.apiKey ? { apiKey: config.apiKey } : {}),
+    ...(config.apiBaseUrl ? { apiBaseUrl: config.apiBaseUrl } : {}),
+  });
+}
+
 async function connect(): Promise<LettaAgentClient> {
   const config = getConnectionConfig();
   setConnection({ status: "connecting", backend: config.backend });
 
   let next: LettaAgentClient | null = null;
   let owned: AppServerHandle | null = null;
+  const mode = load().executionMode ?? "local";
   try {
     let detail: string;
-    if (config.backend === "remote") {
+    // Execution mode 3 — cloud-only: direct cloud client. Sessions run in
+    // the SDK-managed sandbox or on a registered computer (per-conversation
+    // pick); no local process, no local file access.
+    if (mode === "cloud-only") {
+      next = new LettaAgentClient({
+        backend: "cloud",
+        ...(config.apiKey ? { apiKey: config.apiKey } : {}),
+        ...(config.apiBaseUrl ? { apiBaseUrl: config.apiBaseUrl } : {}),
+      });
+      detail = "Letta Cloud (cloud-only)";
+    }
+    // Execution mode 2 — remote-env: register this machine as a remote
+    // environment (letta server, remote mode), then connect as a cloud
+    // client; execution lands on this box's own registration.
+    if (!next && mode === "remote-env") {
+      // Adopt an existing online registration on this machine when present
+      // (never kills it); otherwise spawn ours. Watch/replace runs inside.
+      void adoptOrSpawn(cloudClientForAdoption(), {
+        ...(config.apiKey ? { LETTA_API_KEY: config.apiKey } : {}),
+        ...(config.apiBaseUrl ? { LETTA_BASE_URL: config.apiBaseUrl } : {}),
+      });
+      next = new LettaAgentClient({
+        backend: "cloud",
+        ...(config.apiKey ? { apiKey: config.apiKey } : {}),
+        ...(config.apiBaseUrl ? { apiBaseUrl: config.apiBaseUrl } : {}),
+      });
+      detail = "Letta Cloud (via this machine's remote registration)";
+    }
+    if (config.backend === "remote" && !next) {
       if (!config.serverUrl) throw new Error("Add your Letta server URL in Settings.");
       next = new LettaAgentClient({
         backend: "remote",
@@ -411,13 +452,18 @@ function finishTurn(turn: Turn, error?: string): void {
   }
 }
 
-async function runTurn(turn: Turn, text: string, otid: string): Promise<void> {
+async function runTurn(
+  turn: Turn,
+  text: string,
+  otid: string,
+  attachments: AttachmentView[] = [],
+): Promise<void> {
   let failure: string | undefined;
   try {
     // A conversation left waiting on an approval (for example, the app quit
     // mid-turn) stays wedged until the runtime re-drives it through canUseTool.
     await turn.session.recoverPendingApprovals({ timeoutMs: 5_000 }).catch(() => undefined);
-    await turn.session.send(text, { otid });
+    await turn.session.send(wireContent(text, attachments), { otid });
 
     for await (const message of turn.session.stream()) {
       if (turn.finished) return;
@@ -463,8 +509,18 @@ export async function sendMessage(input: SendMessageInput): Promise<Conversation
   const sdk = await ensureClient();
   const text = input.text.trim();
   if (!text) throw new Error("Message is empty.");
-  if (input.conversationId && turns.has(input.conversationId)) {
-    throw new Error("This chat is still working. Stop it or wait for it to finish.");
+  // Mid-run sends on the ACTIVE session queue server-side (the session
+  // multiplexes); only a DIFFERENT stuck turn blocks. Matches the runtime
+  // change the Angus client shipped (queue-while-running).
+  const active = input.conversationId ? turns.get(input.conversationId) : undefined;
+  if (active && active.finished) {
+    throw new Error("This chat is finishing up. Try again in a moment.");
+  }
+  if (active && !active.finished) {
+    await active.session.send(wireContent(text, input.attachments ?? []), { otid: input.otid });
+    const known = conversations.get(input.conversationId!);
+    if (!known) throw new Error("Conversation is not loaded.");
+    return known;
   }
 
   let conversation: ConversationSummary;
@@ -507,6 +563,13 @@ export async function sendMessage(input: SendMessageInput): Promise<Conversation
       cwd: input.cwd,
       permissionMode: getPermissionMode(),
       ...(input.model ? { model: input.model } : {}),
+      // computer overrides are only valid on cloud sessions (the SDK rejects
+      // them on local/remote clients). In private/local mode execution is
+      // this machine's app server by construction — the override is void.
+      ...((sdk as { backend?: string }).backend === "cloud" && input.computer
+        ? { computer: input.computer }
+        : {}),
+      ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
       canUseTool: (toolName, toolInput, context) =>
         new Promise<CanUseToolResponse>((resolve) => {
           const request: ApprovalRequest = {
@@ -525,7 +588,7 @@ export async function sendMessage(input: SendMessageInput): Promise<Conversation
   };
   turns.set(conversation.id, turn);
   emit({ type: "turn.started", conversationId: conversation.id });
-  void runTurn(turn, text, input.otid);
+  void runTurn(turn, text, input.otid, input.attachments ?? []);
 
   return conversation;
 }

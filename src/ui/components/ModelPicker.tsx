@@ -44,13 +44,21 @@ export function ModelPicker({
 
   const results = useMemo(() => {
     const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-    const matches = terms.length
+    const all = terms.length
       ? models.filter((model) => {
           const haystack = `${model.label} ${model.handle}`.toLowerCase();
           return terms.every((term) => haystack.includes(term));
         })
       : models;
-    return matches.slice(0, MAX_RESULTS);
+    return all.slice(0, MAX_RESULTS);
+  }, [models, query]);
+  const totalMatches = useMemo(() => {
+    const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!terms.length) return models.length;
+    return models.filter((model) => {
+      const haystack = `${model.label} ${model.handle}`.toLowerCase();
+      return terms.every((term) => haystack.includes(term));
+    }).length;
   }, [models, query]);
 
   const choose = (handle: string) => {
@@ -94,6 +102,11 @@ export function ModelPicker({
             className="w-full rounded-lg bg-surface-tertiary px-3 py-2 text-sm text-ink-900 placeholder:text-muted focus:outline-none"
           />
           <div role="listbox" className="mt-1.5 max-h-72 overflow-y-auto">
+            {totalMatches > results.length && (
+              <div className="px-3 py-1.5 text-center font-mono text-[11px] text-muted">
+                showing {results.length} of {totalMatches} — keep typing to narrow
+              </div>
+            )}
             {results.length === 0 && (
               <div className="px-3 py-4 text-center text-sm text-muted">No models match.</div>
             )}

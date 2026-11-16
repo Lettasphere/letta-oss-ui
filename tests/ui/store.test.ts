@@ -71,6 +71,37 @@ function createBridge() {
     stopTurn: vi.fn(),
     respondApproval: vi.fn(),
     selectDirectory: vi.fn(),
+    getExecutionMode: vi.fn(),
+    listComputers: vi.fn(),
+    getConversationEnv: vi.fn(),
+    setConversationEnv: vi.fn(),
+    setExecutionMode: vi.fn(),
+    getRemoteEnvStatus: vi.fn(),
+    getRemoteEnvName: vi.fn(),
+    setRemoteEnvName: vi.fn(),
+    listRemoteDirectory: vi.fn(),
+    clearBrowseCache: vi.fn(),
+    getConversationCwd: vi.fn(),
+    getDefaultDirectory: vi.fn(),
+    getTargetFolder: vi.fn(),
+    setTargetFolder: vi.fn(),
+    listSavedConnections: vi.fn(),
+    saveCurrentConnection: vi.fn(),
+    switchSavedConnection: vi.fn(),
+    deleteSavedConnection: vi.fn(),
+    getRemoteAdoption: vi.fn().mockResolvedValue({ kind: "none" }),
+    getRemoteHandover: vi.fn().mockResolvedValue({ phase: "stable" }),
+    adoptRemoteEnv: vi.fn(),
+    getRemoteAuth: vi.fn(),
+    openRemoteAuthUrl: vi.fn(),
+    getPinnedConversations: vi.fn().mockResolvedValue([]),
+    togglePinnedConversation: vi.fn().mockResolvedValue([]),
+    selectImages: vi.fn().mockResolvedValue({ attachments: [], skipped: [] }),
+    getReadCursors: vi.fn().mockResolvedValue({}),
+    markConversationRead: vi.fn().mockResolvedValue({}),
+    getOsNotifications: vi.fn().mockResolvedValue(true),
+    setOsNotifications: vi.fn().mockResolvedValue(true),
+    markAllConversationsRead: vi.fn().mockResolvedValue({}),
   } satisfies Record<keyof AppBridge, unknown>;
 }
 
@@ -275,12 +306,14 @@ describe("sending", () => {
     expect(state().chats["conv-1"]).toMatchObject({ running: false, rows: [] });
   });
 
-  it("does not send while the chat is still working, or when the text is blank", async () => {
+  it("does not send blank text; mid-run sends queue instead of blocking", async () => {
     useAppStore.setState({ activeId: "conv-1" });
     state().handleEvent({ type: "turn.started", conversationId: "conv-1" });
-    await state().send("again");
+    // Mid-run send on an existing conversation now multiplexes (queues).
+    await state().send("queued while running");
+    expect(bridge.sendMessage).toHaveBeenCalledTimes(1);
     await state().send("   ");
-    expect(bridge.sendMessage).not.toHaveBeenCalled();
+    expect(bridge.sendMessage).toHaveBeenCalledTimes(1);
   });
 
   it("sends a model only when the user picked a different one for the chat", async () => {
