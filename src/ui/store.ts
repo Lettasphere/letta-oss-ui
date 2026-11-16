@@ -6,6 +6,8 @@ import type {
   AppEvent,
   AppSettings,
   ApprovalDecision,
+  ComputerSelectorField,
+  ComputerSummary,
   ApprovalRequest,
   ChatRow,
   ChatTextRow,
@@ -18,6 +20,40 @@ import type {
 } from "./types";
 
 const api = window.bridge;
+
+/**
+ * The effective execution environment for the active conversation:
+ * "local-app" (private app server), "sandbox", or a computer descriptor.
+ * Explicit pick wins; otherwise the execution-mode default applies.
+ */
+// Return values must be referentially STABLE across calls — useSyncExternalStore
+// re-renders on every new object reference (getSnapshot caching contract).
+// So: strings/null only; the deviceId itself is read separately where needed.
+export function selectEffectiveEnvironment(state: {
+  activeId: string | null;
+  envOverrides: Record<string, ComputerSelectorField | null>;
+  executionMode: "local" | "remote-env" | "cloud-only";
+}): "local-app" | "sandbox" | "remote" {
+  const key = state.activeId ?? NEW_CHAT;
+  const override = key in state.envOverrides ? state.envOverrides[key] : undefined;
+  if (override === null) return "sandbox";
+  if (override !== undefined) return "remote"; // any explicit selector
+  // No explicit pick: the mode default IS the effective environment.
+  return state.executionMode === "local" ? "local-app" : "sandbox";
+}
+
+function labelForComputer(
+  selector: ComputerSelectorField,
+  computers: ComputerSummary[],
+): string {
+  const byDevice = new Map(
+    computers.map((computer) => [JSON.stringify({ deviceId: computer.deviceId }), computer.name]),
+  );
+  const key = JSON.stringify(selector);
+  const asName =
+    typeof selector === "string" ? selector : selector && "name" in selector ? selector.name : null;
+  return byDevice.get(key) ?? asName ?? "the selected computer";
+}
 
 /** Key for the chat that has not been sent yet. */
 export const NEW_CHAT = "new";
@@ -64,6 +100,34 @@ type AppState = {
   agentsLoaded: boolean;
   agentId: string | null;
   models: ModelOption[];
+  /** App execution mode (what runs locally) — shared so every surface
+   * (environment chip, pickers) reacts to Settings changes instantly. */
+  executionMode: "local" | "remote-env" | "cloud-only";
+  /** Working folder PER conversation PER environment (sandbox|deviceId).
+   * Key: `${conversationKey}|${targetKey}` — switching environment switches
+   * the effective folder instead of leaking one target's path to another. */
+  envCwdOverrides: Record<string, string>;
+  /** The spawn's OAuth device-flow state (remote-env mode sign-in). */
+  /** Pinned conversation ids — sorted first in the sidebar. */
+  pinnedConversations: string[];
+  /** conversationId -> last-seen updatedAt; newer rows render unread. */
+  readCursors: Record<string, number>;
+  /** Handover lifecycle: disconnect detected → switching → stable. */
+  remoteHandover: { phase: "stable" } | { phase: "switching"; since: number; reason: string };
+  /** Live adoption state (owned vs adopted registration) — event-driven. */
+  remoteAdoption:
+    | { kind: "none" }
+    | { kind: "adopted"; connectionId: string; name: string; deviceId: string }
+    | { kind: "owned"; connectionId: string; name: string; deviceId: string };
+  remoteAuth:
+    | { status: "idle" }
+    | { status: "pending"; url: string | null; userCode: string | null; reason: "mode-switch" | "replacement" }
+    | { status: "done" }
+    | { status: "failed"; error: string | null; reason: "mode-switch" | "replacement" };
+  computers: ComputerSummary[];
+  computersLoading: boolean;
+  computersError: string | null;
+  envOverrides: Record<string, ComputerSelectorField | null>;
   /** null until loaded, or when the backend manages providers itself. */
   providers: ProviderSummary[] | null;
   /** What the main area shows for the selected agent. */
@@ -79,6 +143,10 @@ type AppState = {
   /** Working directory and model picked in the composer but not yet sent. */
   cwdOverrides: Record<string, string>;
   modelOverrides: Record<string, string>;
+  /** Reasoning-effort pick per conversation (absent = model default). */
+  effortOverrides: Record<string, "none" | "minimal" | "low" | "medium" | "high" | "xhigh">;
+  /** Images staged for the next send (cleared on send). */
+  stagedAttachments: import("../electron/libs/attachments.js").AttachmentView[];
   /** The first message of a new chat, shown while its conversation is created. */
   pendingFirstMessage: ChatTextRow | null;
   notice: string | null;
@@ -119,6 +187,23 @@ type AppState = {
   pickCwd: () => Promise<void>;
   setCwd: (cwd: string) => void;
   setModel: (handle: string) => void;
+  setEffort: (effort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | null) => void;
+  /** Stage image attachments for the active conversation's next send. */
+  pickImages: () => Promise<void>;
+  refreshComputers: () => Promise<void>;
+  refreshExecutionMode: () => Promise<void>;
+  /** Seed adoption state from the main process (events only fire on CHANGE —
+   * adoption during connect() predates the renderer's subscription). */
+  refreshRemoteAdoption: () => void;
+  refreshRemoteHandover: () => void;
+  refreshPinnedConversations: () => void;
+  togglePinnedConversation: (conversationId: string) => void;
+  markConversationRead: (conversationId: string, updatedAt: number) => void;
+  markAllRead: () => void;
+  pickEnvironment: (selector: ComputerSelectorField | null | undefined) => void;
+  /** Set the working folder for the ACTIVE conversation on the ACTIVE
+   * environment target (remote/sandbox flows). */
+  setEnvCwd: (folder: string) => void;
   setDraft: (text: string) => void;
   setNotice: (notice: string | null) => void;
   setSettingsOpen: (open: boolean) => void;
@@ -153,6 +238,17 @@ const CLEARED = {
   agentsLoaded: false,
   agentId: null,
   models: [],
+  executionMode: "local",
+  computers: [],
+  computersLoading: false,
+  computersError: null,
+  envOverrides: {},
+  envCwdOverrides: {},
+  remoteHandover: { phase: "stable" },
+  pinnedConversations: [],
+  readCursors: {},
+  remoteAdoption: { kind: "none" },
+  remoteAuth: { status: "idle" },
   providers: null,
   view: "chat",
   memory: null,
@@ -170,6 +266,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   drafts: {},
   cwdOverrides: {},
   modelOverrides: {},
+  effortOverrides: {},
+  stagedAttachments: [],
   notice: null,
   settingsOpen: false,
   settingsTab: "connection",
@@ -184,14 +282,54 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   handleEvent: (event) => {
     switch (event.type) {
+      case "remote_handover":
+        set({ remoteHandover: event.handover });
+        if (event.handover.phase === "stable") void get().refreshComputers();
+        return;
+      case "remote_adoption":
+        set({ remoteAdoption: event.adoption });
+        // Every adoption rotation (adopt → owned → adopt-back) re-reads the
+        // fleet list — the world changed.
+        void get().refreshComputers();
+        return;
+      case "remote_auth":
+        set({ remoteAuth: event.auth });
+        return;
       case "connection": {
         const previous = get().connection;
         set({ connection: event.state });
         if (event.state.status === "ready" && previous?.status !== "ready") {
           void get().refreshAgents();
+          // Conversation lists can go stale across connection cycles (mode
+          // switches swap which registry serves the list). Reload alongside
+          // agents on every ready transition.
+          const agentId = get().agentId;
+          if (agentId) {
+            void api
+              .listConversations(agentId)
+              .then((conversations) => set({ conversations, conversationsLoaded: true }))
+              .catch(() => undefined);
+          }
+          get().refreshRemoteAdoption();
+          get().refreshRemoteHandover();
+          // The fleet registry is account-level and survives connection
+          // cycles — re-read it on every ready transition (handovers trigger
+          // reconnects; without this the CLEARED wipe below left it empty).
+          void get().refreshComputers();
+          void get().refreshExecutionMode();
         } else if (event.state.status !== "ready" && previous?.status === "ready") {
-          // Agents and conversations belong to the backend that just went away.
+          // Agents and conversations belong to the backend that just went
+          // away. Computers do NOT — they're account registry data; keep the
+          // last-good list across the flicker.
+          const keptComputers = get().computers;
+          const keptLoading = get().computersLoading;
+          const keptError = get().computersError;
           set(CLEARED);
+          set({
+            computers: keptComputers,
+            computersLoading: keptLoading,
+            computersError: keptError,
+          });
         }
         break;
       }
@@ -254,12 +392,20 @@ export const useAppStore = create<AppState>((set, get) => ({
           })),
         );
         break;
-      case "conversation.updated":
+      case "conversation.updated": {
+        // An update to the OPEN conversation is seen the moment it renders.
+        if (get().activeId === event.conversation.id) {
+          void window.bridge
+            .markConversationRead({ conversationId: event.conversation.id, updatedAt: event.conversation.updatedAt })
+            .then((cursors) => set({ readCursors: cursors }))
+            .catch(() => undefined);
+        }
         if (event.conversation.agentId !== get().agentId) break;
         set((state) => ({
           conversations: upsertConversation(state.conversations, event.conversation),
         }));
         break;
+      }
       case "menu":
         if (event.command === "new-chat") get().openChat(null);
         else get().openSettings("connection");
@@ -272,6 +418,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       const [agents, settings] = await Promise.all([api.listAgents(), api.getSettings()]);
       set({ agents, agentsLoaded: true, settings });
       void get().refreshModels();
+      void get().refreshExecutionMode();
+      get().refreshPinnedConversations();
+      void window.bridge.getReadCursors().then((cursors) => set({ readCursors: cursors }));
+      get().refreshRemoteAdoption();
+      get().refreshRemoteHandover();
       const connection = get().connection;
       if (connection?.status === "ready" && connection.providers) void get().loadProviders();
 
@@ -352,7 +503,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   deleteAgent: async () => {
     const { agentId } = get();
-    if (!agentId) return;
+    if (!agentId)         return;
     await api.deleteAgent(agentId);
     set({ agentSettingsOpen: false });
     // Picks another agent, or shows the "create your first agent" screen.
@@ -360,6 +511,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   openChat: (conversationId) => {
+    // Opening marks the conversation seen (its current state = read).
+    if (conversationId) {
+      const updatedAt = get().conversations.find((c) => c.id === conversationId)?.updatedAt;
+      if (updatedAt) get().markConversationRead(conversationId, updatedAt);
+    }
     set({ activeId: conversationId, view: "chat" });
     if (!conversationId) return;
     const chat = get().chats[conversationId];
@@ -399,7 +555,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { agentId, activeId } = state;
     if (!text || !agentId) return;
     const key = activeId ?? NEW_CHAT;
-    if (activeId ? state.chats[activeId]?.running : state.pendingFirstMessage) return;
+    // Mid-run sends QUEUE server-side for existing conversations (runtime
+    // multiplexes the active session); only the first message is single-flight.
+    if (activeId ? false : state.pendingFirstMessage) return;
+    if (activeId && !state.chats[activeId]?.running) {
+      // fall through — normal send path
+    }
 
     const otid = crypto.randomUUID();
     const userRow = optimisticUserRow(text, otid);
@@ -418,6 +579,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { drafts, cwdOverrides, modelOverrides };
     };
 
+    const wasRunning = activeId ? Boolean(state.chats[activeId]?.running) : false;
     if (activeId) {
       set((current) => ({
         ...clearComposer(activeId)(current),
@@ -427,12 +589,20 @@ export const useAppStore = create<AppState>((set, get) => ({
           error: null,
           activity: "Starting",
         })),
+        // Mid-run sends queue: model/effort/folder picks apply to the
+        // NEXT new run (they bind at session creation), not this one.
+        ...(wasRunning
+          ? { notice: "Queued — model/effort/folder picks apply to the next new run." }
+          : {}),
       }));
     } else {
       set((current) => ({ ...clearComposer(NEW_CHAT)(current), pendingFirstMessage: userRow }));
     }
 
     try {
+      const pickedEnv =
+      key in state.envOverrides ? state.envOverrides[key] : undefined;
+    const pickedEffort = key in state.effortOverrides ? state.effortOverrides[key] : undefined;
       const conversation = await api.sendMessage({
         agentId,
         conversationId: activeId,
@@ -440,6 +610,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         otid,
         cwd,
         ...(model ? { model } : {}),
+        // Explicit environment pick: null = cloud sandbox, object = a
+        // registered computer, undefined = the mode's default (omitted).
+        ...(pickedEnv !== undefined ? { computer: pickedEnv ?? undefined } : {}),
+        ...(pickedEffort !== undefined ? { reasoningEffort: pickedEffort } : {}),
       });
       set((current) => ({
         conversations: upsertConversation(current.conversations, {
@@ -526,6 +700,8 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   saveSettings: async (update) => {
     set({ settings: await api.updateSettings(update) });
+    // Mode may have been applied by the dialog alongside these settings.
+    void get().refreshExecutionMode();
   },
 
   loadProviders: async () => {
@@ -604,10 +780,127 @@ export const useAppStore = create<AppState>((set, get) => ({
       cwdOverrides: { ...state.cwdOverrides, [state.activeId ?? NEW_CHAT]: cwd },
     })),
 
+  markConversationRead: (conversationId: string, updatedAt: number) => {
+    void window.bridge
+      .markConversationRead({ conversationId, updatedAt })
+      .then((cursors) => set({ readCursors: cursors }));
+  },
+
+  markAllRead: () => {
+    const items = get().conversations.map((c) => ({ conversationId: c.id, updatedAt: c.updatedAt }));
+    if (items.length === 0) return;
+    void window.bridge
+      .markAllConversationsRead({ items })
+      .then((cursors) => set({ readCursors: cursors }));
+  },
+
+  togglePinnedConversation: (conversationId: string) => {
+    void window.bridge
+      .togglePinnedConversation({ conversationId })
+      .then((pins) => set({ pinnedConversations: pins }));
+  },
+
+  refreshPinnedConversations: () => {
+    void window.bridge.getPinnedConversations().then((pins) => {
+      set({ pinnedConversations: pins });
+    });
+  },
+
+  refreshRemoteHandover: () => {
+    void window.bridge.getRemoteHandover().then((handover) => {
+      set({ remoteHandover: handover });
+    });
+  },
+
+  refreshRemoteAdoption: () => {
+    void window.bridge.getRemoteAdoption().then((adoption) => {
+      set({ remoteAdoption: adoption });
+    });
+  },
+
+  refreshExecutionMode: async () => {
+    try {
+      set({ executionMode: await api.getExecutionMode() });
+    } catch {
+      // keep current
+    }
+  },
+
+  refreshComputers: async () => {
+    set({ computersLoading: true, computersError: null });
+    try {
+      const list = await api.listComputers();
+      set({ computers: list, computersLoading: false });
+    } catch (error) {
+      // A failed re-read must NOT clobber the last good list (a transient
+      // error during handover races used to blank YOUR COMPUTERS).
+      set({ computersLoading: false, computersError: errorMessage(error) });
+    }
+  },
+
+  pickEnvironment: (selector) => {
+    const key = get().activeId ?? NEW_CHAT;
+    if (key !== NEW_CHAT && get().chats[key]?.running) {
+      set({ notice: "Wait for the current run to finish before changing the environment." });
+      return;
+    }
+    if (key !== NEW_CHAT) {
+      void api.setConversationEnv({ conversationId: key, selector }).catch((error) => {
+        set({ notice: errorMessage(error) });
+      });
+    }
+    // undefined = inherit the mode default ("This computer" in private mode):
+    // CLEAR the override rather than writing a value.
+    set((state) => {
+      const envOverrides = { ...state.envOverrides };
+      if (selector === undefined) delete envOverrides[key];
+      else envOverrides[key] = selector;
+      return {
+        envOverrides,
+        notice:
+          selector === undefined
+            ? "Runs in this conversation now use this computer's app server."
+            : `Runs in this conversation now use ${selector ? labelForComputer(selector, state.computers) : "the cloud sandbox"}.`,
+      };
+    });
+  },
+
+  setEnvCwd: (folder) => {
+    set((state) => {
+      const key = state.activeId ?? NEW_CHAT;
+      const target = targetKeyFor(state);
+      return { envCwdOverrides: { ...state.envCwdOverrides, [`${key}|${target}`]: folder } };
+    });
+  },
+
   setModel: (handle) =>
     set((state) => ({
       modelOverrides: { ...state.modelOverrides, [state.activeId ?? NEW_CHAT]: handle },
     })),
+
+  pickImages: async () => {
+    try {
+      const { attachments, skipped } = await api.selectImages();
+      if (skipped.length > 0) set({ notice: skipped.join("\n") });
+      if (attachments.length > 0) {
+        set((state) => ({
+          stagedAttachments: [...state.stagedAttachments, ...attachments].slice(0, 4),
+        }));
+      }
+    } catch (error) {
+      set({ notice: errorMessage(error) });
+    }
+  },
+
+  setEffort: (effort) =>
+    set((state) => {
+      const effortOverrides = { ...state.effortOverrides };
+      const key = state.activeId ?? NEW_CHAT;
+      // null clears the pick (model default); a value sets it.
+      if (effort === null) delete effortOverrides[key];
+      else effortOverrides[key] = effort;
+      return { effortOverrides };
+    }),
 
   setDraft: (text) =>
     set((state) => ({ drafts: { ...state.drafts, [state.activeId ?? NEW_CHAT]: text } })),
@@ -622,18 +915,78 @@ export const useAppStore = create<AppState>((set, get) => ({
 
 type Selectable = Pick<
   AppState,
-  "settings" | "conversations" | "cwdOverrides" | "modelOverrides" | "agents" | "agentId"
+  | "settings"
+  | "conversations"
+  | "cwdOverrides"
+  | "envCwdOverrides"
+  | "envOverrides"
+  | "executionMode"
+  | "activeId"
+  | "modelOverrides"
+  | "agents"
+  | "agentId"
 >;
 
 /** Working directory the next message in a chat will run in. */
+export function targetKeyFor(state: {
+  activeId?: string | null;
+  envOverrides?: Record<string, ComputerSelectorField | null>;
+  executionMode?: "local" | "remote-env" | "cloud-only";
+} & Record<string, unknown>): string {
+  const activeId = state.activeId ?? null;
+  const overrides = state.envOverrides ?? {};
+  const mode = state.executionMode ?? "local";
+  const key = activeId ?? NEW_CHAT;
+  const override = key in overrides ? overrides[key] : undefined;
+  if (override === null) return "sandbox";
+  if (override !== undefined && typeof override === "object" && "deviceId" in override && override.deviceId) {
+    return String(override.deviceId);
+  }
+  if (override !== undefined) return "remote";
+  return mode === "local" ? "local" : "sandbox";
+}
+
+/** Reasoning tiers a provider family supports (until the API populates
+ * reasoning_capabilities — probed null across the catalog Nov 16). Derived
+ * from provider behavior; absent provider = full list (SDK validates). */
+export function supportedEffortsFor(handle: string | null | undefined): string[] {
+  if (!handle) return ["none", "minimal", "low", "medium", "high", "xhigh"];
+  const provider = handle.split("/")[0] ?? "";
+  const table: Record<string, string[]> = {
+    zai: ["low", "medium", "high"],
+    "z-ai": ["low", "medium", "high"],
+    "lc-zai-coding": ["low", "medium", "high"],
+    openai: ["none", "minimal", "low", "medium", "high"],
+    anthropic: ["low", "medium", "high"],
+    google: ["low", "medium", "high"],
+    deepseek: ["low", "medium", "high"],
+  };
+  return table[provider] ?? ["none", "minimal", "low", "medium", "high", "xhigh"];
+}
+
+/** The folder the NEXT message uses: environment-scoped pick first, else the
+ * legacy conversation cwd (local/default flows), else recent. */
+export function selectEffectiveCwd(state: Selectable, key: string): string {
+  const target = targetKeyFor(state);
+  const envScoped = state.envCwdOverrides?.[`${key}|${target}`];
+  if (envScoped) return envScoped;
+  // Local/default environments keep the conversation cwd semantics.
+  if (target === "local") {
+    return (
+      state.cwdOverrides[key] ??
+      state.conversations.find((item) => item.id === key)?.cwd ??
+      state.settings?.recentCwds[0] ??
+      state.settings?.defaultCwd ??
+      ""
+    );
+  }
+  // Remote/sandbox with no pick yet: empty — the session uses the target's
+  // own default (boot_working_directory), NOT another environment's path.
+  return "";
+}
+
 export function selectCwd(state: Selectable, key: string): string {
-  return (
-    state.cwdOverrides[key] ??
-    state.conversations.find((item) => item.id === key)?.cwd ??
-    state.settings?.recentCwds[0] ??
-    state.settings?.defaultCwd ??
-    ""
-  );
+  return selectEffectiveCwd(state, key);
 }
 
 /** Model the next message in a chat will use. */

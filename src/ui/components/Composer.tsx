@@ -1,10 +1,11 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { folderName, shortPath } from "../lib/format";
-import { NEW_CHAT, selectCwd, selectModel, useAppStore } from "../store";
+import { NEW_CHAT, selectCwd, selectEffectiveEnvironment, selectModel, supportedEffortsFor, targetKeyFor, useAppStore } from "../store";
 import type { PermissionMode } from "../types";
+import { EnvironmentPicker } from "./EnvironmentPicker";
 import { ModelPicker } from "./ModelPicker";
-import { ArrowUpIcon, CheckIcon, ChevronDownIcon, FolderIcon, ShieldIcon, StopIcon } from "./icons";
+import { ArrowUpIcon, CheckIcon, ChevronDownIcon, FolderIcon, ShieldIcon, Spinner, StopIcon } from "./icons";
 
 const MAX_HEIGHT = 240;
 // A stable reference: a selector must not return a fresh array on every call.
@@ -22,9 +23,126 @@ const menuItem =
   "flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink-800 outline-none data-[highlighted]:bg-surface-tertiary";
 
 function FolderMenu({ cwd }: { cwd: string }) {
+  // Hooks must run before ANY conditional return — the environment pick
+  // changes between renders, and an early return would change the hook
+  // count and crash the tree ("Rendered fewer hooks than expected").
+  const effectiveEnv = useAppStore(selectEffectiveEnvironment);
   const recentCwds = useAppStore((state) => state.settings?.recentCwds ?? NO_FOLDERS);
   const setCwd = useAppStore((state) => state.setCwd);
   const pickCwd = useAppStore((state) => state.pickCwd);
+  const setEnvCwd = useAppStore((state) => state.setEnvCwd);
+
+  const [browsing, setBrowsing] = useState(false);
+  const activeId = useAppStore((state) => state.activeId);
+  const envOverride = useAppStore((state) =>
+    activeId ? state.envOverrides[activeId] : state.envOverrides[NEW_CHAT],
+  );
+
+
+  // Per-target folder: remembered pick, else the target's discovered default.
+  // The label mirrors what the session will actually use.
+  const targetDeviceId =
+    envOverride && typeof envOverride === "object" && "deviceId" in envOverride
+      ? envOverride.deviceId
+      : null;
+  const targetKey = useAppStore(targetKeyFor);
+  const [targetFolder, setTargetFolder] = useState<string | null>(null);
+  const [folderResolving, setFolderResolving] = useState(false);
+  useEffect(() => {
+    if (effectiveEnv !== "sandbox" && effectiveEnv !== "remote") return;
+    // Target changed: clear immediately — never show the previous target's
+    // folder while this one resolves.
+    setTargetFolder(null);
+    setFolderResolving(true);
+    // 10s timeout: a websocket to a dead lease can hang the chain forever,
+    // freezing the chip at "Remote". Losing the race = retry next open.
+    const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000));
+    void Promise.race([
+      window.bridge
+        .getTargetFolder({ targetKey })
+        .then((remembered) => {
+          if (remembered) {
+            setTargetFolder(remembered);
+            return;
+          }
+          // No remembered pick: discover and show the target's own default.
+          return window.bridge
+            .getDefaultDirectory({
+              selector: targetDeviceId ? { deviceId: targetDeviceId } : null,
+            })
+            .then((def) => {
+              setTargetFolder(def);
+            })
+            .catch(() => setTargetFolder(null));
+        })
+        .catch(() => setTargetFolder(null)),
+      timeout,
+    ]).finally(() => setFolderResolving(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveEnv, targetKey]);
+
+  // Resolve the browse target: explicit pick → computer/sandbox.
+  const selector =
+    effectiveEnv === "sandbox"
+      ? null
+      : (() => {
+          if (!envOverride || typeof envOverride !== "object" || !("deviceId" in envOverride)) {
+            return null;
+          }
+          return envOverride;
+        })();
+
+  if (effectiveEnv === "sandbox" || effectiveEnv === "remote") {
+    return (
+      <>
+        <button
+          type="button"
+          className="chip"
+          title={
+            effectiveEnv === "sandbox"
+              ? "Browse the cloud sandbox filesystem (one quick turn per folder)"
+              : "Browse the remote computer's filesystem (one quick turn per folder)"
+          }
+          onClick={() => setBrowsing(true)}
+        >
+          <FolderIcon className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate text-xs">
+            {folderResolving && !targetFolder ? (
+              <span className="flex items-center gap-1.5 text-muted">
+                <Spinner className="h-3 w-3" />
+                Loading
+              </span>
+            ) : targetFolder ? (
+              shortPath(targetFolder)
+            ) : effectiveEnv === "sandbox" ? (
+              "Sandbox"
+            ) : (
+              "Remote"
+            )}
+          </span>
+          <ChevronDownIcon className="h-3 w-3 shrink-0" />
+        </button>
+        {browsing && (
+          <RemoteBrowseDialog
+            selector={selector}
+            startPath={cwd}
+            onChoose={(path) => {
+              // Per-environment folder: switching targets never leaks this
+              // path into another environment's session.
+              setEnvCwd(path);
+              setTargetFolder(path);
+              void window.bridge
+                .setTargetFolder({ targetKey, folder: path })
+                .catch(() => undefined);
+              setBrowsing(false);
+            }}
+            onClose={() => setBrowsing(false)}
+          />
+        )}
+      </>
+    );
+  }
+  void cwd;
   const others = recentCwds.filter((path) => path !== cwd);
 
   return (
@@ -56,6 +174,73 @@ function FolderMenu({ cwd }: { cwd: string }) {
             <FolderIcon className="h-4 w-4 shrink-0 text-muted" />
             Choose folder...
           </DropdownMenu.Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  );
+}
+
+const EFFORT_TIERS: Array<{
+  effort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+  label: string;
+  detail: string;
+}> = [
+  { effort: "none", label: "None", detail: "No reasoning — direct answers" },
+  { effort: "minimal", label: "Minimal", detail: "Brief thinking, fastest" },
+  { effort: "low", label: "Low", detail: "Light reasoning" },
+  { effort: "medium", label: "Medium", detail: "Balanced reasoning" },
+  { effort: "high", label: "High", detail: "Deep reasoning" },
+  { effort: "xhigh", label: "X-high", detail: "Maximum reasoning — slowest" },
+];
+
+function EffortMenu() {
+  const activeId = useAppStore((state) => state.activeId);
+  const modelHandle = useAppStore((state) =>
+    activeId
+      ? state.modelOverrides[activeId] ??
+        state.conversations.find((item) => item.id === activeId)?.model
+      : state.modelOverrides[NEW_CHAT],
+  );
+  const effort = useAppStore((state) =>
+    activeId ? state.effortOverrides[activeId] : state.effortOverrides[NEW_CHAT],
+  );
+  const setEffort = useAppStore((state) => state.setEffort);
+  const label = effort ? (EFFORT_TIERS.find((t) => t.effort === effort)?.label ?? effort) : "Auto";
+
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger className="chip" title="How hard the model thinks before answering">
+        <span className="truncate text-xs">{label}</span>
+        <ChevronDownIcon className="h-3 w-3 shrink-0" />
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content className={menuContent} side="top" align="start" sideOffset={8}>
+          <DropdownMenu.Label className="px-3 pb-1 pt-2 text-xs text-muted">
+            Thinking effort
+          </DropdownMenu.Label>
+          <DropdownMenu.Item
+            className={menuItem}
+            onSelect={() => setEffort(null)}
+          >
+            <span className="w-4 shrink-0">{effort === undefined ? <CheckIcon className="h-4 w-4 text-accent" /> : null}</span>
+            <span>
+              <span className="block">Auto</span>
+              <span className="block text-xs text-muted">Model default</span>
+            </span>
+          </DropdownMenu.Item>
+          {EFFORT_TIERS.filter((tier) => supportedEffortsFor(modelHandle).includes(tier.effort)).map((tier) => (
+            <DropdownMenu.Item
+              key={tier.effort}
+              className={menuItem}
+              onSelect={() => setEffort(tier.effort)}
+            >
+              <span className="w-4 shrink-0">{effort === tier.effort ? <CheckIcon className="h-4 w-4 text-accent" /> : null}</span>
+              <span>
+                <span className="block">{tier.label}</span>
+                <span className="block text-xs text-muted">{tier.detail}</span>
+              </span>
+            </DropdownMenu.Item>
+          ))}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
@@ -98,6 +283,8 @@ function PermissionMenu() {
 }
 
 export function Composer({ disabled }: { disabled: boolean }) {
+  const pickImages = useAppStore((state) => state.pickImages);
+  const stagedAttachments = useAppStore((state) => state.stagedAttachments);
   const activeId = useAppStore((state) => state.activeId);
   const key = activeId ?? NEW_CHAT;
   const draft = useAppStore((state) => state.drafts[key] ?? "");
@@ -130,7 +317,20 @@ export function Composer({ disabled }: { disabled: boolean }) {
   return (
     <div className="mx-auto w-full max-w-3xl px-6 pb-5">
       <div className="rounded-2xl border border-border bg-surface shadow-card transition-colors focus-within:border-border-hover">
-        <textarea
+        {stagedAttachments.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {stagedAttachments.map((attachment) => (
+              <span
+                key={attachment.id}
+                className="flex items-center gap-1 rounded-lg border border-border bg-surface-tertiary px-2 py-1 text-xs"
+              >
+                <span className="truncate max-w-32">{attachment.name}</span>
+                <span className="text-muted">{attachment.width}×{attachment.height}</span>
+              </span>
+            ))}
+          </div>
+        )}
+                <textarea
           ref={inputRef}
           rows={1}
           value={draft}
@@ -148,8 +348,18 @@ export function Composer({ disabled }: { disabled: boolean }) {
         <div className="flex items-center gap-1.5 px-2.5 pb-2.5 pt-1.5">
           <div className="flex min-w-0 flex-1 items-center gap-1.5">
             <FolderMenu cwd={cwd} />
+            <EnvironmentPicker />
             <ModelPicker value={model} models={models} onChange={setModel} className="min-w-0" />
+            <EffortMenu />
             <PermissionMenu />
+            <button
+              type="button"
+              className="chip"
+              title="Attach images"
+              onClick={() => void pickImages()}
+            >
+              <span className="text-xs">📎</span>
+            </button>
           </div>
           {running && activeId ? (
             <button
@@ -173,6 +383,123 @@ export function Composer({ disabled }: { disabled: boolean }) {
               <ArrowUpIcon className="h-4 w-4" />
             </button>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Remote/sandbox directory browser. Listings speak the list_in_directory
+ * protocol directly over the target's transport — instant, creates nothing.
+ */
+function RemoteBrowseDialog({
+  selector,
+  startPath,
+  onChoose,
+  onClose,
+}: {
+  selector: { deviceId: string } | null;
+  startPath: string | null;
+  onChoose: (path: string) => void;
+  onClose: () => void;
+}) {
+  const [path, setPath] = useState("/"); // replaced on mount by conversation cwd
+
+  const [entries, setEntries] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [directoriesLoaded, setDirectoriesLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = (next: string) => {
+    setPath(next);
+    setLoading(true);
+    setError(null);
+    void window.bridge
+      .listRemoteDirectory({ selector, path: next })
+      .then((dirs) => {
+        setEntries(dirs);
+        setDirectoriesLoaded(true);
+      })
+      .catch((failure) => {
+        setError(failure instanceof Error ? failure.message : String(failure));
+      })
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    // Open where the conversation already is. If that folder doesn't exist
+    // on this target (e.g. a local default path on a phone), fall back to /.
+    const start = startPath && startPath.startsWith("/") ? startPath : "/";
+    void window.bridge
+      .listRemoteDirectory({ selector, path: start })
+      .then((dirs) => {
+        setPath(start);
+        setEntries(dirs);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (start !== "/") {
+          load("/");
+        } else {
+          setError("Could not list the target's root directory.");
+          setLoading(false);
+        }
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
+      <div className="w-[28rem] rounded-2xl border border-border bg-surface p-4 shadow-elevated">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="font-mono text-sm text-ink-900">{path}</span>
+          <button type="button" className="text-muted hover:text-ink-900" onClick={onClose}>
+            ✕
+          </button>
+        </div>
+        <div className="max-h-64 overflow-y-auto rounded-lg border border-border">
+          {loading && (
+            <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted">
+              <Spinner className="h-3 w-3" /> Listing…
+            </div>
+          )}
+          {error && <div className="px-3 py-2 text-sm text-error">{error}</div>}
+          {!loading &&
+            !error &&
+            entries.map((entry) => (
+              <button
+                key={entry}
+                type="button"
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-surface-tertiary"
+                onClick={() => load(path === "/" ? `/${entry}` : `${path}/${entry}`)}
+              >
+                📁 {entry}
+              </button>
+            ))}
+          {!loading && !error && !directoriesLoaded && (
+            <div className="px-3 py-2 text-sm text-muted">Loading…</div>
+          )}
+          {!loading && !error && directoriesLoaded && entries.length === 0 && (
+            <div className="px-3 py-2 text-sm text-muted">No subdirectories.</div>
+          )}
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="button"
+            className="button-secondary"
+            disabled={path === "/"}
+            onClick={() => load(path.split("/").slice(0, -1).join("/") || "/")}
+          >
+            Up
+          </button>
+          <span className="flex-1" />
+          <button type="button" className="button-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" className="button-primary" onClick={() => onChoose(path)}>
+            Choose this folder
+          </button>
         </div>
       </div>
     </div>

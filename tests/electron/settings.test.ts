@@ -158,3 +158,46 @@ describe("working folders", () => {
     expect(settings.getConversationCwd("conv-1")).toBeNull();
   });
 });
+
+describe("saved connections", () => {
+  it("saves the current connection, restores it after changes, and deletes it", async () => {
+    await settings.updateSettings({ backend: "cloud", apiBaseUrl: "https://api.example.com", apiKey: "sk-test" });
+    let list = settings.saveCurrentConnection("Work");
+    expect(list).toHaveLength(1);
+    expect(list[0].name).toBe("Work");
+    expect(list[0].backend).toBe("cloud");
+
+    // Diverge the live config.
+    await settings.updateSettings({ backend: "local" });
+    expect(settings.getConnectionConfig().backend).toBe("local");
+
+    // Switching restores the snapshot, including the secret.
+    settings.switchSavedConnection(list[0].id);
+    const config = settings.getConnectionConfig();
+    expect(config.backend).toBe("cloud");
+    expect(config.apiBaseUrl).toBe("https://api.example.com");
+    expect(config.apiKey).toBe("sk-test");
+
+    // Deleting removes the entry and its snapshot blob.
+    list = settings.deleteSavedConnection(list[0].id);
+    expect(list).toHaveLength(0);
+    settings.switchSavedConnection("gone");
+    expect(settings.getConnectionConfig().backend).toBe("cloud"); // unchanged
+  });
+
+  it("overwrites a same-named connection instead of duplicating", async () => {
+    await settings.updateSettings({ backend: "cloud", apiKey: "sk-one" });
+    settings.saveCurrentConnection("Work");
+    await settings.updateSettings({ backend: "remote", serverUrl: "ws://127.0.0.1:4500" });
+    const list = settings.saveCurrentConnection("Work");
+    expect(list).toHaveLength(1);
+    expect(list[0].backend).toBe("remote");
+  });
+
+  it("never writes plain secrets into the settings file", async () => {
+    await settings.updateSettings({ backend: "cloud", apiKey: "sk-plainsecret" });
+    settings.saveCurrentConnection("Secrets");
+    const raw = savedFile();
+    expect(raw).not.toContain("sk-plainsecret");
+  });
+});
