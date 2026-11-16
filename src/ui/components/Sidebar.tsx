@@ -114,6 +114,7 @@ function ConversationItem({
         className="flex min-w-0 flex-1 items-center gap-2 py-2 pl-2.5 pr-1 text-left outline-none"
       >
         <span className={`min-w-0 flex-1 truncate text-sm ${active ? "text-ink-900" : "text-ink-800"}`}>
+          {pinned && <span className="mr-1 text-accent">★</span>}
           {conversation.title || "New chat"}
         </span>
         {running ? (
