@@ -94,6 +94,8 @@ function createBridge() {
     adoptRemoteEnv: vi.fn(),
     getRemoteAuth: vi.fn(),
     openRemoteAuthUrl: vi.fn(),
+    getPinnedConversations: vi.fn().mockResolvedValue([]),
+    togglePinnedConversation: vi.fn().mockResolvedValue([]),
   } satisfies Record<keyof AppBridge, unknown>;
 }
 

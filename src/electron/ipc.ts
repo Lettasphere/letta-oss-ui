@@ -81,6 +81,16 @@ const handlers: Handlers = {
   getRemoteEnvName: () => load().remoteEnvName ?? "",
   listRemoteDirectory: (input) => listRemoteDirectory(input.selector, input.path),
   clearBrowseCache: () => clearBrowseCache(),
+  getPinnedConversations: () => load().pinnedConversations ?? [],
+  togglePinnedConversation: (input) => {
+    const stored = load();
+    const pins = new Set(stored.pinnedConversations ?? []);
+    if (pins.has(input.conversationId)) pins.delete(input.conversationId);
+    else pins.add(input.conversationId);
+    const next = [...pins];
+    save({ ...stored, pinnedConversations: next });
+    return next;
+  },
   getDefaultDirectory: (input) =>
     getDefaultDirectory(input.selector),
   getTargetFolder: (input) => {

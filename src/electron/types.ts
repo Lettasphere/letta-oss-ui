@@ -245,6 +245,8 @@ export type AppRequests = {
   }): string[];
   getConversationCwd(conversationId: string): string | null;
   clearBrowseCache(): void;
+  getPinnedConversations(): string[];
+  togglePinnedConversation(input: { conversationId: string }): string[];
   getDefaultDirectory(input: {
     selector: import("@letta-ai/letta-agent-sdk").ComputerSelector | null;
   }): string;

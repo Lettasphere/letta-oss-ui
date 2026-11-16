@@ -108,6 +108,8 @@ type AppState = {
    * the effective folder instead of leaking one target's path to another. */
   envCwdOverrides: Record<string, string>;
   /** The spawn's OAuth device-flow state (remote-env mode sign-in). */
+  /** Pinned conversation ids — sorted first in the sidebar. */
+  pinnedConversations: string[];
   /** Handover lifecycle: disconnect detected → switching → stable. */
   remoteHandover: { phase: "stable" } | { phase: "switching"; since: number; reason: string };
   /** Live adoption state (owned vs adopted registration) — event-driven. */
@@ -185,6 +187,8 @@ type AppState = {
    * adoption during connect() predates the renderer's subscription). */
   refreshRemoteAdoption: () => void;
   refreshRemoteHandover: () => void;
+  refreshPinnedConversations: () => void;
+  togglePinnedConversation: (conversationId: string) => void;
   pickEnvironment: (selector: ComputerSelectorField | null | undefined) => void;
   /** Set the working folder for the ACTIVE conversation on the ACTIVE
    * environment target (remote/sandbox flows). */
@@ -230,6 +234,7 @@ const CLEARED = {
   envOverrides: {},
   envCwdOverrides: {},
   remoteHandover: { phase: "stable" },
+  pinnedConversations: [],
   remoteAdoption: { kind: "none" },
   remoteAuth: { status: "idle" },
   providers: null,
@@ -382,6 +387,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ agents, agentsLoaded: true, settings });
       void get().refreshModels();
       void get().refreshExecutionMode();
+      get().refreshPinnedConversations();
       get().refreshRemoteAdoption();
       get().refreshRemoteHandover();
       const connection = get().connection;
@@ -722,6 +728,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({
       cwdOverrides: { ...state.cwdOverrides, [state.activeId ?? NEW_CHAT]: cwd },
     })),
+
+  togglePinnedConversation: (conversationId: string) => {
+    void window.bridge
+      .togglePinnedConversation({ conversationId })
+      .then((pins) => set({ pinnedConversations: pins }));
+  },
+
+  refreshPinnedConversations: () => {
+    void window.bridge.getPinnedConversations().then((pins) => {
+      set({ pinnedConversations: pins });
+    });
+  },
 
   refreshRemoteHandover: () => {
     void window.bridge.getRemoteHandover().then((handover) => {

@@ -84,11 +84,15 @@ function AgentSwitcher() {
 function ConversationItem({
   conversation,
   now,
+  pinned,
+  onTogglePin,
   onRename,
   onResume,
 }: {
   conversation: ConversationSummary;
   now: number;
+  pinned: boolean;
+  onTogglePin: (conversation: ConversationSummary) => void;
   onRename: (conversation: ConversationSummary) => void;
   onResume: (conversation: ConversationSummary) => void;
 }) {
@@ -133,6 +137,12 @@ function ConversationItem({
         </DropdownMenu.Trigger>
         <DropdownMenu.Portal>
           <DropdownMenu.Content className={menuContent} align="start" sideOffset={6}>
+            <DropdownMenu.Item
+              className={menuItem}
+              onSelect={() => onTogglePin(conversation)}
+            >
+              {pinned ? "Unpin" : "Pin to top"}
+            </DropdownMenu.Item>
             <DropdownMenu.Item className={menuItem} onSelect={() => onRename(conversation)}>
               Rename
             </DropdownMenu.Item>
@@ -263,7 +273,14 @@ function ResumeDialog({
 }
 
 export function Sidebar() {
-  const conversations = useAppStore((state) => state.conversations);
+  const rawConversations = useAppStore((state) => state.conversations);
+  const pinnedConversations = useAppStore((state) => state.pinnedConversations);
+  const togglePinnedConversation = useAppStore((state) => state.togglePinnedConversation);
+  const conversations = [...rawConversations].sort((a, b) => {
+    const pa = pinnedConversations.includes(a.id) ? 0 : 1;
+    const pb = pinnedConversations.includes(b.id) ? 0 : 1;
+    return pa - pb;
+  });
   const conversationsLoaded = useAppStore((state) => state.conversationsLoaded);
   const agentId = useAppStore((state) => state.agentId);
   const connection = useAppStore((state) => state.connection);
@@ -318,6 +335,8 @@ export function Sidebar() {
               key={conversation.id}
               conversation={conversation}
               now={now}
+              pinned={pinnedConversations.includes(conversation.id)}
+              onTogglePin={(item) => togglePinnedConversation(item.id)}
               onRename={setRenaming}
               onResume={setResuming}
             />

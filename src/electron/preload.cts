@@ -10,6 +10,8 @@ const METHODS = [
   "getRemoteEnvName",
   "listRemoteDirectory",
   "clearBrowseCache",
+  "getPinnedConversations",
+  "togglePinnedConversation",
   "getDefaultDirectory",
   "getTargetFolder",
   "setTargetFolder",

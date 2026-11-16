@@ -22,6 +22,8 @@ export type StoredSettings = {
   permissionMode?: PermissionMode;
   agentIds?: Partial<Record<BackendKind, string>>;
   recentCwds?: string[];
+  /** Pinned conversation ids — sorted to the top of the sidebar. */
+  pinnedConversations?: string[];
   conversationCwds?: Record<string, string>;
   sharedServer?: { enabled: boolean; port: number };
   /** The reused sandbox-browse conversation (created once, persisted). */
