@@ -40,7 +40,25 @@ async function envListClient(connectionId: string): Promise<{
   close: () => Promise<void>;
 }> {
   const hit = envClients.get(connectionId);
-  if (hit) return hit as never;
+  if (hit) {
+    // cache-buster: a cached socket can be dead (server rotated the lease,
+    // network blip) — requestRaw on it hangs until the caller's timeout.
+    // Verify liveness with a cheap 3s ping; dead sockets get replaced.
+    try {
+      const pingId = `ping-${Date.now()}`;
+      await Promise.race([
+        (hit as { requestRaw: (m: unknown, o: unknown) => Promise<unknown> }).requestRaw(
+          { type: "get_cwd_map", request_id: pingId },
+          { predicate: (m: { type?: string; request_id?: string }) => m?.request_id === pingId, timeoutMs: 3_000 } as never,
+        ),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("ping-timeout")), 3_000)),
+      ]);
+      return hit as never;
+    } catch {
+      await (hit as { close: () => Promise<void> }).close().catch(() => undefined);
+      envClients.delete(connectionId);
+    }
+  }
   const { createAppServerClient } = await import("@letta-ai/letta-code/app-server-client");
   const url = `wss://api.letta.com/v1/environments/${encodeURIComponent(
     connectionId,
