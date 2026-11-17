@@ -342,29 +342,79 @@ function titleFrom(text: string): string {
   return line.length > TITLE_MAX_CHARS ? `${line.slice(0, TITLE_MAX_CHARS - 1).trimEnd()}...` : line;
 }
 
+/** In-process memo: conversation ids already husk-checked (id -> true=real, false=husk).
+ * listMessages(limit 1) is the only reliable discriminator (husk=0 rows, real≥1;
+ * list-level fields are projection-unreliable). Memoized so the per-refresh cost
+ * is zero for previously-checked conversations. */
+const huskChecked = new Map<string, boolean>();
+
+async function hasMessages(sdk: Awaited<ReturnType<typeof ensureClient>>, conversationId: string): Promise<boolean> {
+  const memo = huskChecked.get(conversationId);
+  if (memo !== undefined) return memo;
+  try {
+    const page = (await sdk.conversations.listMessages(conversationId, { limit: 1 })) as unknown as {
+      messages?: unknown[];
+    };
+    const verdict = (page.messages?.length ?? 0) > 0;
+    huskChecked.set(conversationId, verdict);
+    return verdict;
+  } catch {
+    // Unprobeable — treat as real (fail open; the official client's behavior
+    // on unreachable rows is unknown, showing beats hiding on error).
+    return true;
+  }
+}
+
 export async function listConversations(agentId: string): Promise<ConversationSummary[]> {
   const sdk = await ensureClient();
-  const list = await sdk.conversations.list({ agentId, limit: 100 });
+  // Fetch ALL pages: the agent's conversation count can far exceed one page
+  // (443 here, ~400 cron husks), and real conversations sit beyond page 1.
+  const list = [];
+  let after: string | undefined;
+  for (let page = 0; page < 10; page++) {
+    const batch = await sdk.conversations.list({
+      agentId,
+      limit: 100,
+      ...(after ? { after } : {}),
+    });
+    list.push(...batch);
+    if (batch.length < 100) break;
+    after = batch[batch.length - 1]?.id;
+  }
   // Skip archived chats and the empty conversation every new agent starts with.
   // The SDK list projection intermittently nulls summary+last_message_at for
   // REAL conversations (observed Nov 16-17; retrieve() returns them) — such
   // rows get one bounded retrieve-enrichment pass instead of being dropped.
+  const candidates = list.filter(
+    (conversation) =>
+      !conversation.archived && Boolean(conversation.summary || conversation.last_message_at),
+  );
+  // Probe husk-status concurrently (10 at a time) — 447 sequential probes
+  // took minutes; batched concurrency brings first load to ~30s, and the
+  // memo makes every subsequent load instant.
+  const verdicts = await Promise.all(
+    candidates.map((_, index, all) => {
+      // Stagger: probe in waves of 10 via micro-chunking
+      const chunk = Math.floor(index / 10);
+      return new Promise<boolean>((resolve) => {
+        setTimeout(() => {
+          void hasMessages(sdk, all[index].id).then(resolve);
+        }, chunk * 150);
+      });
+    }),
+  );
   const kept: typeof list = [];
-  for (const conversation of list) {
-    if (conversation.archived) continue;
-    if (conversation.summary || conversation.last_message_at) {
-      kept.push(conversation);
-      continue;
-    }
-    // Null-projection row: recover via retrieve; keep only if it has real content.
-    try {
-      const enriched = await sdk.conversations.retrieve(conversation.id);
-      if (enriched.summary || enriched.last_message_at) kept.push(enriched as never);
-    } catch {
-      // Unreachable row — drop as before.
-    }
+  for (let i = 0; i < candidates.length; i++) {
+    if (verdicts[i]) kept.push(candidates[i]);
   }
-  return kept.map(toConversationSummary).sort((a, b) => b.updatedAt - a.updatedAt);
+  // Null-projection rows (summary+last_message_at both null in list but
+  // present in retrieve) are no longer enriched separately: the candidates
+  // filter drops them, and the projection bug is intermittent — on
+  // well-behaved loads they appear with fields and pass hasMessages like
+  // any other row. The retrieve-enrichment experiment (PR #13) is folded
+  // into this simpler shape: one filter, one probe, one gate.
+  const result = kept.map(toConversationSummary).sort((a, b) => b.updatedAt - a.updatedAt);
+  return result;
 }
 
 export async function renameConversation(
