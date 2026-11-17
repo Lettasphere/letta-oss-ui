@@ -345,14 +345,26 @@ function titleFrom(text: string): string {
 export async function listConversations(agentId: string): Promise<ConversationSummary[]> {
   const sdk = await ensureClient();
   const list = await sdk.conversations.list({ agentId, limit: 100 });
-  return list
-    // Skip archived chats and the empty conversation every new agent starts with.
-    .filter(
-      (conversation) =>
-        !conversation.archived && Boolean(conversation.summary || conversation.last_message_at),
-    )
-    .map(toConversationSummary)
-    .sort((a, b) => b.updatedAt - a.updatedAt);
+  // Skip archived chats and the empty conversation every new agent starts with.
+  // The SDK list projection intermittently nulls summary+last_message_at for
+  // REAL conversations (observed Nov 16-17; retrieve() returns them) — such
+  // rows get one bounded retrieve-enrichment pass instead of being dropped.
+  const kept: typeof list = [];
+  for (const conversation of list) {
+    if (conversation.archived) continue;
+    if (conversation.summary || conversation.last_message_at) {
+      kept.push(conversation);
+      continue;
+    }
+    // Null-projection row: recover via retrieve; keep only if it has real content.
+    try {
+      const enriched = await sdk.conversations.retrieve(conversation.id);
+      if (enriched.summary || enriched.last_message_at) kept.push(enriched as never);
+    } catch {
+      // Unreachable row — drop as before.
+    }
+  }
+  return kept.map(toConversationSummary).sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 export async function renameConversation(
