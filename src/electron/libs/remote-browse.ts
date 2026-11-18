@@ -122,7 +122,18 @@ async function sandboxTransport(): Promise<RawClient> {
   const session = client().createSession(agentId, {
     permissionMode: "unrestricted",
   });
-  await (session as unknown as { initialize?: () => Promise<void> }).initialize?.();
+  try {
+    await (session as unknown as { initialize?: () => Promise<void> }).initialize?.();
+  } catch (error) {
+    // The real cause (e.g. 403 cloud-credits-exhausted) must reach the chip —
+    // the generic "did not come up" hid an actionable message for days.
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      message.includes("credits")
+        ? "Cloud sandbox needs credits (chat.letta.com/preferences/usage) — pick a machine target or add credits."
+        : `Sandbox session failed: ${message}`,
+    );
+  }
   sandboxSession = session;
   const transport = ((session as { controller?: { client?: RawClient } }).controller ?? {})
     .client;
