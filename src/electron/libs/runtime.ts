@@ -450,7 +450,15 @@ export async function listConversations(agentId: string): Promise<ConversationSu
   const result = kept
     .map((conversation) => {
       const extra = enrichedFields.get(conversation.id);
-      return extra ? { ...conversation, ...extra } : conversation;
+      if (!extra) return conversation;
+      // Memo fills gaps, never overrides: list-present values win over the
+      // memoized null-day enrichment (rename-after-enrichment would else
+      // show the stale title until process restart). (Uncia N1, PR #15.)
+      return {
+        ...conversation,
+        summary: conversation.summary ?? extra.summary,
+        last_message_at: conversation.last_message_at ?? extra.last_message_at,
+      };
     })
     .map(toConversationSummary)
     .sort((a, b) => b.updatedAt - a.updatedAt);
