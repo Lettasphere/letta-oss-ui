@@ -73,9 +73,15 @@ function FolderMenu({ cwd }: { cwd: string }) {
             .then((def) => {
               setTargetFolder(def);
             })
-            .catch(() => setTargetFolder(null));
+            .catch((error) => {
+              console.warn("[chip] discovery failed:", String(error).slice(0, 200));
+              setTargetFolder(null);
+            });
         })
-        .catch(() => setTargetFolder(null)),
+        .catch((error) => {
+          console.warn("[chip] folder-chain failed:", String(error).slice(0, 200));
+          setTargetFolder(null);
+        }),
       timeout,
     ]).finally(() => setFolderResolving(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
