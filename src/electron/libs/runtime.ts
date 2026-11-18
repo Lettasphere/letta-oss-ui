@@ -365,12 +365,38 @@ async function hasMessages(sdk: Awaited<ReturnType<typeof ensureClient>>, conver
   }
 }
 
+/** In-process memo: display fields recovered via retrieve for rows whose list
+ * projection nulled summary+last_message_at (id -> fields). Only probe-PASSING
+ * rows land here (the probe proved them real); retrieve() is the only way to
+ * get their title/timestamp back for display. Memoized so repeat loads never
+ * re-retrieve (kills PR #13's per-refresh N1 tax). */
+const enrichedFields = new Map<string, { summary: string | null; last_message_at: string | null }>();
+
+async function enrichDisplayFields(
+  sdk: Awaited<ReturnType<typeof ensureClient>>,
+  conversationId: string,
+): Promise<void> {
+  if (enrichedFields.has(conversationId)) return;
+  try {
+    const full = await sdk.conversations.retrieve(conversationId);
+    enrichedFields.set(conversationId, {
+      summary: full.summary ?? null,
+      last_message_at: full.last_message_at ?? null,
+    });
+  } catch {
+    // Unenrichable — the row still shows (the probe passed it); it just lacks
+    // a title/timestamp until a later load succeeds. Left unmemoized so the
+    // next load retries.
+  }
+}
+
 export async function listConversations(agentId: string): Promise<ConversationSummary[]> {
   const sdk = await ensureClient();
   // Fetch ALL pages: the agent's conversation count can far exceed one page
   // (443 here, ~400 cron husks), and real conversations sit beyond page 1.
   const list = [];
   let after: string | undefined;
+  let capped = false;
   for (let page = 0; page < 10; page++) {
     const batch = await sdk.conversations.list({
       agentId,
@@ -379,16 +405,19 @@ export async function listConversations(agentId: string): Promise<ConversationSu
     });
     list.push(...batch);
     if (batch.length < 100) break;
+    // A full 10th page means the loop exits with conversations still unfetched
+    // — silent truncation is the bug class that hides them, so say so loudly.
+    if (page === 9) capped = true;
     after = batch[batch.length - 1]?.id;
   }
-  // Skip archived chats and the empty conversation every new agent starts with.
-  // The SDK list projection intermittently nulls summary+last_message_at for
-  // REAL conversations (observed Nov 16-17; retrieve() returns them) — such
-  // rows get one bounded retrieve-enrichment pass instead of being dropped.
-  const candidates = list.filter(
-    (conversation) =>
-      !conversation.archived && Boolean(conversation.summary || conversation.last_message_at),
-  );
+  if (capped) {
+    console.log("[convlist] pagination cap reached — conversations beyond page 10 are NOT shown");
+  }
+  // All non-archived rows are probe candidates. The SDK list projection
+  // intermittently nulls summary+last_message_at for REAL conversations
+  // (observed Nov 16-17; retrieve() returns them), so list-level fields are
+  // not a valid discriminator — the hasMessages probe is the single gate.
+  const candidates = list.filter((conversation) => !conversation.archived);
   // Probe husk-status concurrently (10 at a time) — 447 sequential probes
   // took minutes; batched concurrency brings first load to ~30s, and the
   // memo makes every subsequent load instant.
@@ -407,13 +436,24 @@ export async function listConversations(agentId: string): Promise<ConversationSu
   for (let i = 0; i < candidates.length; i++) {
     if (verdicts[i]) kept.push(candidates[i]);
   }
-  // Null-projection rows (summary+last_message_at both null in list but
-  // present in retrieve) are no longer enriched separately: the candidates
-  // filter drops them, and the projection bug is intermittent — on
-  // well-behaved loads they appear with fields and pass hasMessages like
-  // any other row. The retrieve-enrichment experiment (PR #13) is folded
-  // into this simpler shape: one filter, one probe, one gate.
-  const result = kept.map(toConversationSummary).sort((a, b) => b.updatedAt - a.updatedAt);
+  // Rows that PASSED the probe but show null summary AND null last_message_at
+  // in the list projection are real conversations missing display fields —
+  // retrieve() fills title/last_message_at for display only (the probe already
+  // decided inclusion). Memoized, so each such row is retrieved once ever.
+  const needsDisplayFields = kept.filter(
+    (conversation) => !conversation.summary && !conversation.last_message_at,
+  );
+  await Promise.all(
+    needsDisplayFields.map((conversation) => enrichDisplayFields(sdk, conversation.id)),
+  );
+  // Merge the memoized display fields into each row before projection.
+  const result = kept
+    .map((conversation) => {
+      const extra = enrichedFields.get(conversation.id);
+      return extra ? { ...conversation, ...extra } : conversation;
+    })
+    .map(toConversationSummary)
+    .sort((a, b) => b.updatedAt - a.updatedAt);
   return result;
 }
 
