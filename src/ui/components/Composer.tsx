@@ -312,7 +312,11 @@ export function Composer({ disabled }: { disabled: boolean }) {
     if (!disabled) inputRef.current?.focus();
   }, [key, disabled]);
 
-  const canSend = !disabled && !running && draft.trim().length > 0;
+  // Queueing: mid-run sends on an EXISTING conversation multiplex onto the
+  // live session (server-side queue) — the composer must not block them.
+  // First-message chats stay single-flight (pendingFirstMessage gate in send).
+  const isExistingChat = activeId !== null;
+  const canSend = !disabled && draft.trim().length > 0 && (isExistingChat || !running);
 
   return (
     <div className="mx-auto w-full max-w-3xl px-6 pb-5">

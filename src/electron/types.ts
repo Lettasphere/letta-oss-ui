@@ -249,6 +249,11 @@ export type AppRequests = {
   }): string[];
   getConversationCwd(conversationId: string): string | null;
   clearBrowseCache(): void;
+  listSchedules(input: { agentId: string }): Promise<import("./libs/schedules.js").CronTask[]>;
+  pauseSchedule(input: { taskId: string }): Promise<void>;
+  resumeSchedule(input: { taskId: string }): Promise<void>;
+  deleteSchedule(input: { taskId: string }): Promise<void>;
+  triggerSchedule(input: { taskId: string }): Promise<void>;
   selectImages(): Promise<{
     attachments: import("./libs/attachments.js").AttachmentView[];
     skipped: string[];

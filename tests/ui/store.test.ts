@@ -102,6 +102,11 @@ function createBridge() {
     getOsNotifications: vi.fn().mockResolvedValue(true),
     setOsNotifications: vi.fn().mockResolvedValue(true),
     markAllConversationsRead: vi.fn().mockResolvedValue({}),
+    listSchedules: vi.fn().mockResolvedValue([]),
+    pauseSchedule: vi.fn().mockResolvedValue(undefined),
+    resumeSchedule: vi.fn().mockResolvedValue(undefined),
+    deleteSchedule: vi.fn().mockResolvedValue(undefined),
+    triggerSchedule: vi.fn().mockResolvedValue(undefined),
   } satisfies Record<keyof AppBridge, unknown>;
 }
 

@@ -288,6 +288,7 @@ export function Sidebar() {
     return pa - pb;
   });
   const conversationsLoaded = useAppStore((state) => state.conversationsLoaded);
+  const conversationsLoading = useAppStore((state) => state.conversationsLoading);
   const agentId = useAppStore((state) => state.agentId);
   const connection = useAppStore((state) => state.connection);
   const openChat = useAppStore((state) => state.openChat);
@@ -363,7 +364,10 @@ export function Sidebar() {
         {agentId && conversationsLoaded && visibleConversations.length === 0 && query.trim() && (
           <p className="px-2.5 py-3 text-xs text-muted">No chats match "{query.trim()}".</p>
         )}
-        {agentId && conversationsLoaded && conversations.length === 0 && !query.trim() && (
+        {agentId && conversationsLoading && (
+          <p className="px-2.5 py-3 text-xs text-muted">Loading chats…</p>
+        )}
+        {agentId && !conversationsLoading && conversationsLoaded && conversations.length === 0 && !query.trim() && (
           <p className="px-2.5 py-3 text-xs text-muted">No chats yet.</p>
         )}
         <div className="flex flex-col gap-0.5">

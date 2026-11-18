@@ -134,6 +134,7 @@ type AppState = {
   view: "chat" | "memory";
   memory: MemoryState | null;
   conversations: ConversationSummary[];
+  conversationsLoading: boolean;
   conversationsLoaded: boolean;
   /** null is the new, unsent chat. */
   activeId: string | null;
@@ -253,6 +254,7 @@ const CLEARED = {
   view: "chat",
   memory: null,
   conversations: [],
+  conversationsLoading: false,
   conversationsLoaded: false,
   activeId: null,
   chats: {},
@@ -433,7 +435,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({
           agentId: null,
           conversations: [],
-          conversationsLoaded: true,
+          conversationsLoading: false, conversationsLoaded: true,
           activeId: null,
           view: "chat",
           memory: null,
@@ -463,6 +465,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectAgent: async (agentId) => {
     set({
       agentId,
+      conversationsLoading: true,
       conversations: [],
       conversationsLoaded: false,
       activeId: null,
@@ -479,7 +482,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (get().agentId === agentId) set({ conversations, conversationsLoaded: true });
     } catch (error) {
       if (get().agentId === agentId) {
-        set({ conversationsLoaded: true, notice: errorMessage(error) });
+        set({ conversationsLoading: false, conversationsLoaded: true, notice: errorMessage(error) });
       }
     }
   },
