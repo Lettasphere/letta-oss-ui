@@ -605,7 +605,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const pickedEnv =
       key in state.envOverrides ? state.envOverrides[key] : undefined;
-    const pickedEffort = key in state.effortOverrides ? state.effortOverrides[key] : undefined;
+    let pickedEffort = key in state.effortOverrides ? state.effortOverrides[key] : undefined;
+    // The catalog offers "max" (glm default) but the SDK client validator
+    // (0.8.32 through 0.8.90) rejects it. Map to xhigh — the SDK's highest
+    // accepted tier — until the SDK Set learns max. Upstream issue filed.
+    if (pickedEffort === "max") pickedEffort = "xhigh";
       const conversation = await api.sendMessage({
         agentId,
         conversationId: activeId,
