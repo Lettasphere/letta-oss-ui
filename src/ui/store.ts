@@ -145,7 +145,7 @@ type AppState = {
   cwdOverrides: Record<string, string>;
   modelOverrides: Record<string, string>;
   /** Reasoning-effort pick per conversation (absent = model default). */
-  effortOverrides: Record<string, "none" | "minimal" | "low" | "medium" | "high" | "xhigh">;
+  effortOverrides: Record<string, "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max">;
   /** Images staged for the next send (cleared on send). */
   stagedAttachments: import("../electron/libs/attachments.js").AttachmentView[];
   /** The first message of a new chat, shown while its conversation is created. */
@@ -188,7 +188,7 @@ type AppState = {
   pickCwd: () => Promise<void>;
   setCwd: (cwd: string) => void;
   setModel: (handle: string) => void;
-  setEffort: (effort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | null) => void;
+  setEffort: (effort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | null) => void;
   /** Stage image attachments for the active conversation's next send. */
   pickImages: () => Promise<void>;
   refreshComputers: () => Promise<void>;
@@ -949,22 +949,34 @@ export function targetKeyFor(state: {
   return mode === "local" ? "local" : "sandbox";
 }
 
-/** Reasoning tiers a provider family supports (until the API populates
- * reasoning_capabilities — probed null across the catalog Nov 16). Derived
- * from provider behavior; absent provider = full list (SDK validates). */
-export function supportedEffortsFor(handle: string | null | undefined): string[] {
-  if (!handle) return ["none", "minimal", "low", "medium", "high", "xhigh"];
+/**
+ * Reasoning tiers for a model handle: LIVE catalog capabilities first
+ * (reasoning_capabilities.supported_efforts — populated Nov 18 after probing
+ * null since Nov 16; the derived table below was wrong in both directions:
+ * medium unsupported for glm, max missing). The table remains only as a
+ * fallback for rows whose capabilities field is still null.
+ */
+export function supportedEffortsFor(
+  handle: string | null | undefined,
+  models?: { handle: string; efforts: string[] | null }[],
+): string[] {
+  const ALL = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
+  if (!handle) return ALL;
+  // Live: exact-handle match wins; same-handle-prefix rows share capabilities.
+  const live = models?.find((m) => m.handle === handle)?.efforts;
+  if (live && live.length > 0) return live;
+  // Fallback table (derived; used only while the catalog field is null).
   const provider = handle.split("/")[0] ?? "";
   const table: Record<string, string[]> = {
-    zai: ["low", "medium", "high"],
-    "z-ai": ["low", "medium", "high"],
-    "lc-zai-coding": ["low", "medium", "high"],
+    zai: ["low", "high", "max"],
+    "z-ai": ["low", "high", "max"],
+    "lc-zai-coding": ["low", "high", "max"],
     openai: ["none", "minimal", "low", "medium", "high"],
     anthropic: ["low", "medium", "high"],
     google: ["low", "medium", "high"],
     deepseek: ["low", "medium", "high"],
   };
-  return table[provider] ?? ["none", "minimal", "low", "medium", "high", "xhigh"];
+  return table[provider] ?? ALL;
 }
 
 /** The folder the NEXT message uses: environment-scoped pick first, else the

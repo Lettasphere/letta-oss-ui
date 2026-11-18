@@ -179,7 +179,7 @@ describe("models", () => {
   beforeEach(connect);
 
   it("refreshes on demand and keeps the previous list when the backend is down", async () => {
-    const model: ModelOption = { id: "m1", handle: "provider/one", label: "One" };
+    const model: ModelOption = { id: "m1", handle: "provider/one", label: "One", efforts: null, defaultEffort: null, reasoningMandatory: null };
     bridge.listModels.mockResolvedValue([model]);
     await state().refreshModels();
     expect(state().models).toEqual([model]);

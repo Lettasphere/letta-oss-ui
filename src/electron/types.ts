@@ -89,6 +89,10 @@ export type ModelOption = {
   id: string;
   handle: string;
   label: string;
+  /** Live catalog reasoning_capabilities (null when the field is unpopulated). */
+  efforts: string[] | null;
+  defaultEffort: string | null;
+  reasoningMandatory: boolean | null;
 };
 
 export type ProviderField = {
@@ -204,7 +208,8 @@ export type SendMessageInput = {
   /** Execution target for this turn: a computer selector (sandbox = omit). */
   computer?: import("@letta-ai/letta-agent-sdk").ComputerSelector;
   /** Reasoning tier for the session target (absent = model default). */
-  reasoningEffort?: import("@letta-ai/letta-agent-sdk").ReasoningEffort;
+  /** Wire accepts "max" (CLI catalog validator) though the SDK type omits it. */
+  reasoningEffort?: import("@letta-ai/letta-agent-sdk").ReasoningEffort | "max";
   /** Image attachments: intake-processed JPEG views. */
   attachments?: import("./libs/attachments.js").AttachmentView[];
 };

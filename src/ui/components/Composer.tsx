@@ -187,7 +187,7 @@ function FolderMenu({ cwd }: { cwd: string }) {
 }
 
 const EFFORT_TIERS: Array<{
-  effort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+  effort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   label: string;
   detail: string;
 }> = [
@@ -196,11 +196,13 @@ const EFFORT_TIERS: Array<{
   { effort: "low", label: "Low", detail: "Light reasoning" },
   { effort: "medium", label: "Medium", detail: "Balanced reasoning" },
   { effort: "high", label: "High", detail: "Deep reasoning" },
-  { effort: "xhigh", label: "X-high", detail: "Maximum reasoning — slowest" },
+  { effort: "xhigh", label: "X-high", detail: "Extended reasoning" },
+  { effort: "max", label: "Max", detail: "Maximum reasoning — slowest" },
 ];
 
 function EffortMenu() {
   const activeId = useAppStore((state) => state.activeId);
+  const models = useAppStore((state) => state.models);
   const modelHandle = useAppStore((state) =>
     activeId
       ? state.modelOverrides[activeId] ??
@@ -234,7 +236,7 @@ function EffortMenu() {
               <span className="block text-xs text-muted">Model default</span>
             </span>
           </DropdownMenu.Item>
-          {EFFORT_TIERS.filter((tier) => supportedEffortsFor(modelHandle).includes(tier.effort)).map((tier) => (
+          {EFFORT_TIERS.filter((tier) => supportedEffortsFor(modelHandle, models).includes(tier.effort)).map((tier) => (
             <DropdownMenu.Item
               key={tier.effort}
               className={menuItem}
