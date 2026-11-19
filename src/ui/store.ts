@@ -606,10 +606,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       const pickedEnv =
       key in state.envOverrides ? state.envOverrides[key] : undefined;
     let pickedEffort = key in state.effortOverrides ? state.effortOverrides[key] : undefined;
-    // The catalog offers "max" (glm default) but the SDK client validator
-    // (0.8.32 through 0.8.90) rejects it. Map to xhigh — the SDK's highest
-    // accepted tier — until the SDK Set learns max. Upstream issue filed.
-    if (pickedEffort === "max") pickedEffort = "xhigh";
+    // The SDK rejects "max" (validator Set, 0.8.32–0.8.90) AND "xhigh" has no
+    // glm catalog row (tier resolution fails server-side). Only tiers present
+    // in BOTH the catalog capabilities and the SDK Set are sendable; the menu
+    // filters to those. "Auto" (no effort pick) sends the model's default
+    // (glm: the max row) through the no-reasoningEffort path — the honest way
+    // to run glm at full reasoning today.
+    if (pickedEffort === "max") pickedEffort = undefined;
       const conversation = await api.sendMessage({
         agentId,
         conversationId: activeId,
@@ -967,8 +970,15 @@ export function supportedEffortsFor(
   const ALL = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
   if (!handle) return ALL;
   // Live: exact-handle match wins; same-handle-prefix rows share capabilities.
+  const SDK_SENDABLE = ["none", "minimal", "low", "medium", "high", "xhigh"];
   const live = models?.find((m) => m.handle === handle)?.efforts;
-  if (live && live.length > 0) return live;
+  if (live && live.length > 0) {
+    // Intersect: catalog-supported AND SDK-sendable. max is catalog-valid but
+    // the SDK validator rejects it; a tier without a catalog row fails
+    // server-side resolution. Auto (undefined) reaches the model default.
+    const sendable = live.filter((e) => SDK_SENDABLE.includes(e));
+    return sendable.length > 0 ? sendable : live;
+  }
   // Fallback table (derived; used only while the catalog field is null).
   const provider = handle.split("/")[0] ?? "";
   const table: Record<string, string[]> = {
