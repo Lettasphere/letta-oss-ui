@@ -105,6 +105,21 @@ function buildMenu(): Menu {
   return Menu.buildFromTemplate(template);
 }
 
+
+/** Window title carries build identity: version + git SHA — a stale build
+ *  ("v0.2.0" forever) is undetectable without it. */
+function buildTitle(): string {
+  try {
+    const sha = require("node:child_process")
+      .execSync("git rev-parse --short HEAD", { cwd: app.getAppPath() })
+      .toString()
+      .trim();
+    return `OSS-UI v${app.getVersion()} (${sha})`;
+  } catch {
+    return `OSS-UI v${app.getVersion()}`;
+  }
+}
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -149,6 +164,7 @@ function createWindow(): void {
     });
   }
 
+  mainWindow.setTitle(buildTitle());
   if (isDev()) void mainWindow.loadURL(DEV_URL);
   else void mainWindow.loadFile(getUIPath());
 }
