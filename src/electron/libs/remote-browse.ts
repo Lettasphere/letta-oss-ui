@@ -182,10 +182,18 @@ export async function getDefaultDirectory(
   // registration (the spawn the runtime owns). Resolves via its connection.
   let effectiveSelector: ComputerSelector | null = null;
   if (selector === "remote-default") {
-    const { remoteEnvState } = await import("./remote-env.js");
-    const state = remoteEnvState();
-    if (state.connectionId) effectiveSelector = { connectionId: state.connectionId };
-    else throw new Error("This machine's remote registration is not up yet.");
+    // This machine's LIVE registration: the adopted external one when the
+    // app is adopting (remoteEnvState is the OWNED spawn — null while
+    // riding an external registration), else the owned spawn's own id.
+    const { remoteEnvState, remoteAdoptionState } = await import("./remote-env.js");
+    const adoption = remoteAdoptionState();
+    if (adoption.kind === "adopted" && adoption.connectionId) {
+      effectiveSelector = { connectionId: adoption.connectionId };
+    } else {
+      const state = remoteEnvState();
+      if (state.connectionId) effectiveSelector = { connectionId: state.connectionId };
+      else throw new Error("This machine's remote registration is not up yet.");
+    }
   } else {
     effectiveSelector = (selector ?? null) as ComputerSelector | null;
   }
