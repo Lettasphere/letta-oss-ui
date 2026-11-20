@@ -40,7 +40,16 @@ type ProvidersReply = { type: string; providers: WireProvider[] };
 
 type ModelsReply = {
   type: string;
-  entries: Array<{ id: string; handle: string; label?: string }>;
+  entries: Array<{
+    id: string;
+    handle: string;
+    label?: string;
+    reasoning_capabilities?: {
+      supported_efforts?: string[] | null;
+      default_effort?: string | null;
+      mandatory?: boolean | null;
+    } | null;
+  }>;
   available_handles?: string[] | null;
 };
 
@@ -126,7 +135,14 @@ export async function listModels(refresh = false): Promise<ModelOption[]> {
   const seen = new Set<string>();
   const models = reply.entries
     .filter((entry) => (!available || available.has(entry.handle)) && !seen.has(entry.handle) && seen.add(entry.handle))
-    .map((entry) => ({ id: entry.id, handle: entry.handle, label: entry.label || entry.handle }));
+    .map((entry) => ({
+      id: entry.id,
+      handle: entry.handle,
+      label: entry.label || entry.handle,
+      efforts: entry.reasoning_capabilities?.supported_efforts ?? null,
+      defaultEffort: entry.reasoning_capabilities?.default_effort ?? null,
+      reasoningMandatory: entry.reasoning_capabilities?.mandatory ?? null,
+    }));
   return await configuredFirst(models);
 }
 

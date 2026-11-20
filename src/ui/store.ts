@@ -39,7 +39,12 @@ export function selectEffectiveEnvironment(state: {
   if (override === null) return "sandbox";
   if (override !== undefined) return "remote"; // any explicit selector
   // No explicit pick: the mode default IS the effective environment.
-  return state.executionMode === "local" ? "local-app" : "sandbox";
+  // remote-env mode's whole point is "this computer's registration" — its
+  // default target is remote (the adopted/owned machine), NOT sandbox.
+  // Sandbox is the default only in cloud-only mode.
+  if (state.executionMode === "local") return "local-app";
+  if (state.executionMode === "remote-env") return "remote";
+  return "sandbox";
 }
 
 function labelForComputer(
@@ -134,6 +139,7 @@ type AppState = {
   view: "chat" | "memory";
   memory: MemoryState | null;
   conversations: ConversationSummary[];
+  conversationsLoading: boolean;
   conversationsLoaded: boolean;
   /** null is the new, unsent chat. */
   activeId: string | null;
@@ -144,7 +150,7 @@ type AppState = {
   cwdOverrides: Record<string, string>;
   modelOverrides: Record<string, string>;
   /** Reasoning-effort pick per conversation (absent = model default). */
-  effortOverrides: Record<string, "none" | "minimal" | "low" | "medium" | "high" | "xhigh">;
+  effortOverrides: Record<string, "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max">;
   /** Images staged for the next send (cleared on send). */
   stagedAttachments: import("../electron/libs/attachments.js").AttachmentView[];
   /** The first message of a new chat, shown while its conversation is created. */
@@ -187,7 +193,7 @@ type AppState = {
   pickCwd: () => Promise<void>;
   setCwd: (cwd: string) => void;
   setModel: (handle: string) => void;
-  setEffort: (effort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | null) => void;
+  setEffort: (effort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | null) => void;
   /** Stage image attachments for the active conversation's next send. */
   pickImages: () => Promise<void>;
   refreshComputers: () => Promise<void>;
@@ -195,6 +201,7 @@ type AppState = {
   /** Seed adoption state from the main process (events only fire on CHANGE —
    * adoption during connect() predates the renderer's subscription). */
   refreshRemoteAdoption: () => void;
+  hydrateEnvOverrides: () => void;
   refreshRemoteHandover: () => void;
   refreshPinnedConversations: () => void;
   togglePinnedConversation: (conversationId: string) => void;
@@ -253,6 +260,7 @@ const CLEARED = {
   view: "chat",
   memory: null,
   conversations: [],
+  conversationsLoading: false,
   conversationsLoaded: false,
   activeId: null,
   chats: {},
@@ -420,6 +428,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       void get().refreshModels();
       void get().refreshExecutionMode();
       get().refreshPinnedConversations();
+      get().hydrateEnvOverrides();
       void window.bridge.getReadCursors().then((cursors) => set({ readCursors: cursors }));
       get().refreshRemoteAdoption();
       get().refreshRemoteHandover();
@@ -433,7 +442,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({
           agentId: null,
           conversations: [],
-          conversationsLoaded: true,
+          conversationsLoading: false, conversationsLoaded: true,
           activeId: null,
           view: "chat",
           memory: null,
@@ -463,6 +472,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectAgent: async (agentId) => {
     set({
       agentId,
+      conversationsLoading: true,
       conversations: [],
       conversationsLoaded: false,
       activeId: null,
@@ -479,7 +489,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (get().agentId === agentId) set({ conversations, conversationsLoaded: true });
     } catch (error) {
       if (get().agentId === agentId) {
-        set({ conversationsLoaded: true, notice: errorMessage(error) });
+        set({ conversationsLoading: false, conversationsLoaded: true, notice: errorMessage(error) });
       }
     }
   },
@@ -602,7 +612,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const pickedEnv =
       key in state.envOverrides ? state.envOverrides[key] : undefined;
-    const pickedEffort = key in state.effortOverrides ? state.effortOverrides[key] : undefined;
+    let pickedEffort = key in state.effortOverrides ? state.effortOverrides[key] : undefined;
+    // The SDK rejects "max" (validator Set, 0.8.32–0.8.90) AND "xhigh" has no
+    // glm catalog row (tier resolution fails server-side). Only tiers present
+    // in BOTH the catalog capabilities and the SDK Set are sendable; the menu
+    // filters to those. "Auto" (no effort pick) sends the model's default
+    // (glm: the max row) through the no-reasoningEffort path — the honest way
+    // to run glm at full reasoning today.
+    if (pickedEffort === "max") pickedEffort = undefined;
       const conversation = await api.sendMessage({
         agentId,
         conversationId: activeId,
@@ -812,6 +829,23 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
+  /** Hydrate persisted per-conversation env picks from settings (the store
+   * starts empty; without this every restart fell to mode-default targets). */
+  hydrateEnvOverrides: () => {
+    void window.bridge
+      .getAllConversationEnvs()
+      .then((all) => {
+        // The NEW_CHAT key's null (an old explicit-sandbox click) must not
+        // pin every future chat to sandbox — drop it so the mode default
+        // (remote-env = this computer) rules new chats. Conversation-nulls
+        // stay: they were deliberate per-chat picks.
+        const envOverrides = { ...all };
+        if (envOverrides[NEW_CHAT] === null) delete envOverrides[NEW_CHAT];
+        set({ envOverrides });
+      })
+      .catch(() => undefined);
+  },
+
   refreshRemoteAdoption: () => {
     void window.bridge.getRemoteAdoption().then((adoption) => {
       set({ remoteAdoption: adoption });
@@ -943,25 +977,50 @@ export function targetKeyFor(state: {
     return String(override.deviceId);
   }
   if (override !== undefined) return "remote";
+  // No explicit pick: mirror selectEffectiveEnvironment — remote-env's
+  // default is this computer's registration, not sandbox.
+  if (mode === "remote-env") return "remote";
   return mode === "local" ? "local" : "sandbox";
 }
 
-/** Reasoning tiers a provider family supports (until the API populates
- * reasoning_capabilities — probed null across the catalog Nov 16). Derived
- * from provider behavior; absent provider = full list (SDK validates). */
-export function supportedEffortsFor(handle: string | null | undefined): string[] {
-  if (!handle) return ["none", "minimal", "low", "medium", "high", "xhigh"];
+/**
+ * Reasoning tiers for a model handle: LIVE catalog capabilities first
+ * (reasoning_capabilities.supported_efforts — populated Nov 18 after probing
+ * null since Nov 16; the derived table below was wrong in both directions:
+ * medium unsupported for glm, max missing). The table remains only as a
+ * fallback for rows whose capabilities field is still null.
+ */
+export function supportedEffortsFor(
+  handle: string | null | undefined,
+  models?: { handle: string; efforts: string[] | null }[],
+): string[] {
+  const ALL = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
+  if (!handle) return ALL;
+  // Live: exact-handle match wins; same-handle-prefix rows share capabilities.
+  const SDK_SENDABLE = ["none", "minimal", "low", "medium", "high", "xhigh"];
+  const live = models?.find((m) => m.handle === handle)?.efforts;
+  if (live && live.length > 0) {
+    // Intersect: catalog-supported AND SDK-sendable. max is catalog-valid but
+    // the SDK validator rejects it; a tier without a catalog row fails
+    // server-side resolution. Auto (undefined) reaches the model default.
+    const sendable = live.filter((e) => SDK_SENDABLE.includes(e));
+    return sendable.length > 0 ? sendable : live;
+  }
+  // Fallback table (derived; used only while the catalog field is null).
   const provider = handle.split("/")[0] ?? "";
   const table: Record<string, string[]> = {
-    zai: ["low", "medium", "high"],
-    "z-ai": ["low", "medium", "high"],
-    "lc-zai-coding": ["low", "medium", "high"],
+    zai: ["low", "high", "max"],
+    "z-ai": ["low", "high", "max"],
+    "lc-zai-coding": ["low", "high", "max"],
     openai: ["none", "minimal", "low", "medium", "high"],
     anthropic: ["low", "medium", "high"],
     google: ["low", "medium", "high"],
     deepseek: ["low", "medium", "high"],
   };
-  return table[provider] ?? ["none", "minimal", "low", "medium", "high", "xhigh"];
+  // The fallback is as honest as the live path: filter through the sendable
+  // set too — a menu tier that silently no-ops at send is a fake mapping
+  // with a label (Uncia finding 3).
+  return (table[provider] ?? ALL).filter((e) => SDK_SENDABLE.includes(e));
 }
 
 /** The folder the NEXT message uses: environment-scoped pick first, else the

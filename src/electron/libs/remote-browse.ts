@@ -122,7 +122,18 @@ async function sandboxTransport(): Promise<RawClient> {
   const session = client().createSession(agentId, {
     permissionMode: "unrestricted",
   });
-  await (session as unknown as { initialize?: () => Promise<void> }).initialize?.();
+  try {
+    await (session as unknown as { initialize?: () => Promise<void> }).initialize?.();
+  } catch (error) {
+    // The real cause (e.g. 403 cloud-credits-exhausted) must reach the chip —
+    // the generic "did not come up" hid an actionable message for days.
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      message.includes("credits")
+        ? "Cloud sandbox needs credits (chat.letta.com/preferences/usage) — pick a machine target or add credits."
+        : `Sandbox session failed: ${message}`,
+    );
+  }
   sandboxSession = session;
   const transport = ((session as { controller?: { client?: RawClient } }).controller ?? {})
     .client;
@@ -165,10 +176,29 @@ export function clearBrowseCache(): void {
 
 /** The target's default working directory (boot_working_directory). */
 export async function getDefaultDirectory(
-  selector: ComputerSelector | null,
+  selector: ComputerSelector | string | null,
 ): Promise<string> {
-  const transport: RawClient = selector
-    ? await envListClientFor(selector)
+  // "remote-default": the app's remote-env mode target — this machine's own
+  // registration (the spawn the runtime owns). Resolves via its connection.
+  let effectiveSelector: ComputerSelector | null = null;
+  if (selector === "remote-default") {
+    // This machine's LIVE registration: the adopted external one when the
+    // app is adopting (remoteEnvState is the OWNED spawn — null while
+    // riding an external registration), else the owned spawn's own id.
+    const { remoteEnvState, remoteAdoptionState } = await import("./remote-env.js");
+    const adoption = remoteAdoptionState();
+    if (adoption.kind === "adopted" && adoption.connectionId) {
+      effectiveSelector = { connectionId: adoption.connectionId };
+    } else {
+      const state = remoteEnvState();
+      if (state.connectionId) effectiveSelector = { connectionId: state.connectionId };
+      else throw new Error("This machine's remote registration is not up yet.");
+    }
+  } else {
+    effectiveSelector = (selector ?? null) as ComputerSelector | null;
+  }
+  const transport: RawClient = effectiveSelector
+    ? await envListClientFor(effectiveSelector)
     : await sandboxTransport();
   const requestId = `dflt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const reply = (await transport.requestRaw(

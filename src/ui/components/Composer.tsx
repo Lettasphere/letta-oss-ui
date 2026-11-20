@@ -50,6 +50,14 @@ function FolderMenu({ cwd }: { cwd: string }) {
   const [folderResolving, setFolderResolving] = useState(false);
   useEffect(() => {
     if (effectiveEnv !== "sandbox" && effectiveEnv !== "remote") return;
+    // Retry timers die with the effect (navigation unmount) — no zombie retries.
+    const pendingTimers: ReturnType<typeof setTimeout>[] = [];
+    const originalSetTimeout = setTimeout;
+    const scopedSetTimeout = ((fn: () => void, ms?: number) => {
+      const id = originalSetTimeout(fn, ms);
+      pendingTimers.push(id);
+      return id;
+    }) as typeof setTimeout;
     // Target changed: clear immediately — never show the previous target's
     // folder while this one resolves.
     setTargetFolder(null);
@@ -57,27 +65,84 @@ function FolderMenu({ cwd }: { cwd: string }) {
     // 10s timeout: a websocket to a dead lease can hang the chain forever,
     // freezing the chip at "Remote". Losing the race = retry next open.
     const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000));
+    const resolvedRef = { done: false };
     void Promise.race([
       window.bridge
         .getTargetFolder({ targetKey })
         .then((remembered) => {
           if (remembered) {
+            resolvedRef.done = true;
             setTargetFolder(remembered);
             return;
           }
-          // No remembered pick: discover and show the target's own default.
-          return window.bridge
-            .getDefaultDirectory({
-              selector: targetDeviceId ? { deviceId: targetDeviceId } : null,
-            })
+          // No remembered pick: discover the target's own default. In
+          // remote-env mode the default target IS this machine's registration —
+          // null would fall to the sandbox transport (credit-walled).
+          return window.bridge.getDefaultDirectory({
+            selector: targetDeviceId
+              ? { deviceId: targetDeviceId }
+              : effectiveEnv === "remote"
+                ? "remote-default"
+                : null,
+          })
             .then((def) => {
               setTargetFolder(def);
             })
-            .catch(() => setTargetFolder(null));
+            .catch((error) => {
+              console.warn("[chip] discovery failed:", String(error).slice(0, 200));
+              setTargetFolder(null);
+            });
         })
-        .catch(() => setTargetFolder(null)),
+        .catch((error) => {
+          console.warn("[chip] folder-chain failed:", String(error).slice(0, 200));
+          setTargetFolder(null);
+        }),
       timeout,
-    ]).finally(() => setFolderResolving(false));
+    ]).finally(() => {
+      setFolderResolving(false);
+      // Boot-race self-heal: 'registration not up yet' fails once at startup
+      // and without a retry the chip stays 'Remote' forever. Retry with
+      // backoff until a folder resolves (bounded: 5 tries, 2s→16s).
+      // resolvedRef guards against the stale-closure targetFolder check.
+      {
+        let attempt = 0;
+        const retry = () => {
+          attempt += 1;
+          if (attempt > 5 || resolvedRef.done) return;
+          scopedSetTimeout(() => {
+            // Whole retry body guarded: a synchronous throw anywhere in the
+            // chain (bridge gone mid-navigation, etc.) must not kill the loop.
+            try {
+              const pending = window.bridge.getDefaultDirectory({
+                selector: targetDeviceId
+                  ? { deviceId: targetDeviceId }
+                  : effectiveEnv === "remote"
+                    ? "remote-default"
+                    : null,
+              });
+              if (pending && typeof pending.then === "function") {
+                void pending
+                  .then((def) => {
+                    if (def) {
+                      resolvedRef.done = true;
+                      setTargetFolder(def);
+                    } else retry();
+                  })
+                  .catch(() => retry());
+              } else {
+                retry();
+              }
+            } catch {
+              retry();
+            }
+          }, Math.min(2000 * 2 ** (attempt - 1), 16000));
+        };
+        retry();
+      }
+    });
+    return () => {
+      for (const id of pendingTimers) clearTimeout(id);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveEnv, targetKey]);
 
@@ -181,7 +246,7 @@ function FolderMenu({ cwd }: { cwd: string }) {
 }
 
 const EFFORT_TIERS: Array<{
-  effort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
+  effort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   label: string;
   detail: string;
 }> = [
@@ -190,11 +255,32 @@ const EFFORT_TIERS: Array<{
   { effort: "low", label: "Low", detail: "Light reasoning" },
   { effort: "medium", label: "Medium", detail: "Balanced reasoning" },
   { effort: "high", label: "High", detail: "Deep reasoning" },
-  { effort: "xhigh", label: "X-high", detail: "Maximum reasoning — slowest" },
+  { effort: "xhigh", label: "X-high", detail: "Extended reasoning" },
+  { effort: "max", label: "Max", detail: "Maximum reasoning — slowest" },
 ];
 
 function EffortMenu() {
+  // The model's catalog default effort, when published — surfaces what Auto
+  // means for THIS model (e.g. glm: Auto IS max reasoning).
+  const defaultEffortRaw = useAppStore((state) => {
+    const activeId2 = state.activeId;
+    // Model resolution order mirrors the send path: conversation override →
+    // conversation model → NEW_CHAT override → the AGENT's default model.
+    // Without the agent fallback, new chats (no model anywhere yet) showed
+    // plain "Auto" instead of "Auto (max)".
+    const handle =
+      (activeId2
+        ? state.modelOverrides[activeId2] ??
+          state.conversations.find((item) => item.id === activeId2)?.model
+        : state.modelOverrides[NEW_CHAT]) ??
+      state.agents.find((a) => a.id === state.agentId)?.model ??
+      null;
+    const row = state.models.find((m) => m.handle === handle);
+    return row?.defaultEffort ?? null;
+  });
+  const defaultEffortLabel = defaultEffortRaw ?? "";
   const activeId = useAppStore((state) => state.activeId);
+  const models = useAppStore((state) => state.models);
   const modelHandle = useAppStore((state) =>
     activeId
       ? state.modelOverrides[activeId] ??
@@ -224,11 +310,17 @@ function EffortMenu() {
           >
             <span className="w-4 shrink-0">{effort === undefined ? <CheckIcon className="h-4 w-4 text-accent" /> : null}</span>
             <span>
-              <span className="block">Auto</span>
-              <span className="block text-xs text-muted">Model default</span>
+              <span className="block">
+                Auto{defaultEffortLabel ? ` (${defaultEffortLabel})` : ""}
+              </span>
+              <span className="block text-xs text-muted">
+                {defaultEffortLabel
+                  ? `The model's default effort — ${defaultEffortLabel}`
+                  : "Model default"}
+              </span>
             </span>
           </DropdownMenu.Item>
-          {EFFORT_TIERS.filter((tier) => supportedEffortsFor(modelHandle).includes(tier.effort)).map((tier) => (
+          {EFFORT_TIERS.filter((tier) => supportedEffortsFor(modelHandle, models).includes(tier.effort)).map((tier) => (
             <DropdownMenu.Item
               key={tier.effort}
               className={menuItem}
@@ -312,7 +404,11 @@ export function Composer({ disabled }: { disabled: boolean }) {
     if (!disabled) inputRef.current?.focus();
   }, [key, disabled]);
 
-  const canSend = !disabled && !running && draft.trim().length > 0;
+  // Queueing: mid-run sends on an EXISTING conversation multiplex onto the
+  // live session (server-side queue) — the composer must not block them.
+  // First-message chats stay single-flight (pendingFirstMessage gate in send).
+  const isExistingChat = activeId !== null;
+  const canSend = !disabled && draft.trim().length > 0 && (isExistingChat || !running);
 
   return (
     <div className="mx-auto w-full max-w-3xl px-6 pb-5">

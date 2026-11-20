@@ -100,13 +100,13 @@ describe("disconnectProvider", () => {
 
 describe("listModels", () => {
   const entries = [
-    { id: "a", handle: "p/a", label: "Model A" },
-    { id: "b", handle: "p/b" },
+    { id: "a", handle: "p/a", label: "Model A", efforts: null, defaultEffort: null, reasoningMandatory: null },
+    { id: "b", handle: "p/b", label: "p/b", efforts: null, defaultEffort: null, reasoningMandatory: null },
   ];
 
   it("lists only the models the user can run", async () => {
     request.mockResolvedValue({ entries, available_handles: ["p/b"] });
-    expect(await providers.listModels()).toEqual([{ id: "b", handle: "p/b", label: "p/b" }]);
+    expect(await providers.listModels()).toEqual([{ id: "b", handle: "p/b", label: "p/b", efforts: null, defaultEffort: null, reasoningMandatory: null }]);
     expect(request).toHaveBeenCalledWith("list_models", { force: false });
   });
 
@@ -134,8 +134,8 @@ describe("listModels", () => {
       }
       return Promise.resolve({
         entries: [
-          { id: "b1", handle: "amazon-bedrock/b1", label: "B1" },
-          { id: "g1", handle: "openai-compatible/glm", label: "glm" },
+          { id: "b1", handle: "amazon-bedrock/b1", label: "B1", efforts: null, defaultEffort: null, reasoningMandatory: null },
+          { id: "g1", handle: "openai-compatible/glm", label: "glm", efforts: null, defaultEffort: null, reasoningMandatory: null },
         ],
         available_handles: null,
       });

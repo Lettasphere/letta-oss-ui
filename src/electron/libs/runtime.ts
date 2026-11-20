@@ -679,7 +679,8 @@ export async function sendMessage(input: SendMessageInput): Promise<Conversation
       ...((sdk as { backend?: string }).backend === "cloud" && input.computer
         ? { computer: input.computer }
         : {}),
-      ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
+      // Wire accepts "max" (CLI catalog) though the SDK type omits it.
+      ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort as import("@letta-ai/letta-agent-sdk").ReasoningEffort } : {}),
       canUseTool: (toolName, toolInput, context) =>
         new Promise<CanUseToolResponse>((resolve) => {
           const request: ApprovalRequest = {

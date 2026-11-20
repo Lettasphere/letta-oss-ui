@@ -102,6 +102,12 @@ function createBridge() {
     getOsNotifications: vi.fn().mockResolvedValue(true),
     setOsNotifications: vi.fn().mockResolvedValue(true),
     markAllConversationsRead: vi.fn().mockResolvedValue({}),
+    listSchedules: vi.fn().mockResolvedValue([]),
+    pauseSchedule: vi.fn().mockResolvedValue(undefined),
+    resumeSchedule: vi.fn().mockResolvedValue(undefined),
+    deleteSchedule: vi.fn().mockResolvedValue(undefined),
+    triggerSchedule: vi.fn().mockResolvedValue(undefined),
+    getAllConversationEnvs: vi.fn().mockResolvedValue({}),
   } satisfies Record<keyof AppBridge, unknown>;
 }
 
@@ -174,7 +180,7 @@ describe("models", () => {
   beforeEach(connect);
 
   it("refreshes on demand and keeps the previous list when the backend is down", async () => {
-    const model: ModelOption = { id: "m1", handle: "provider/one", label: "One" };
+    const model: ModelOption = { id: "m1", handle: "provider/one", label: "One", efforts: null, defaultEffort: null, reasoningMandatory: null };
     bridge.listModels.mockResolvedValue([model]);
     await state().refreshModels();
     expect(state().models).toEqual([model]);

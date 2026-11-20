@@ -52,7 +52,7 @@ describe("relativeTime", () => {
 });
 
 describe("modelLabel", () => {
-  const models = [{ id: "sonnet", handle: "anthropic/claude-sonnet", label: "Claude Sonnet" }];
+  const models = [{ id: "sonnet", handle: "anthropic/claude-sonnet", label: "Claude Sonnet", efforts: null, defaultEffort: null, reasoningMandatory: null }];
 
   it("uses the catalog label when the model is known", () => {
     expect(modelLabel("anthropic/claude-sonnet", models)).toBe("Claude Sonnet");

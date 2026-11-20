@@ -37,8 +37,9 @@ import {
   switchSavedConnection,
   updateSettings,
 } from "./libs/settings.js";
-import { getConversationEnv, listComputers, setConversationEnv } from "./libs/env.js";
+import { getAllConversationEnvs, getConversationEnv, listComputers, setConversationEnv } from "./libs/env.js";
 import { intakeFiles } from "./libs/attachments.js";
+import { deleteSchedule, listSchedules, pauseSchedule, resumeSchedule, triggerSchedule } from "./libs/schedules.js";
 import {
   clearBrowseCache,
   getDefaultDirectory,
@@ -103,6 +104,7 @@ const handlers: Handlers = {
   getSettings,
   listComputers: () => listComputers(),
   getConversationEnv,
+  getAllConversationEnvs,
   setConversationEnv: (input) => setConversationEnv(input.conversationId, input.selector),
   getExecutionMode: () => load().executionMode ?? "local",
   getRemoteEnvName: () => load().remoteEnvName ?? "",
@@ -245,6 +247,11 @@ const handlers: Handlers = {
   sendMessage,
   stopTurn,
   respondApproval,
+  listSchedules: (input) => listSchedules(input.agentId),
+  pauseSchedule: (input) => pauseSchedule(input.taskId),
+  resumeSchedule: (input) => resumeSchedule(input.taskId),
+  deleteSchedule: (input) => deleteSchedule(input.taskId),
+  triggerSchedule: (input) => triggerSchedule(input.taskId),
   selectImages: async () => {
     const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
     const result = await dialog.showOpenDialog(window, {
