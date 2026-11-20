@@ -5,6 +5,7 @@ const METHODS = [
   "getSettings",
   "listComputers",
   "getConversationEnv",
+  "getAllConversationEnvs",
   "setConversationEnv",
   "getExecutionMode",
   "getRemoteEnvName",

@@ -240,6 +240,7 @@ export type AppRequests = {
   getSettings(): AppSettings;
   listComputers(): ComputerSummary[];
   getConversationEnv(conversationId: string): ConversationEnv;
+  getAllConversationEnvs(): Record<string, ComputerSelectorField | null>;
   setConversationEnv(input: {
     conversationId: string;
     /** null = cloud sandbox; undefined = inherit the mode default. */

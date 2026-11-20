@@ -54,6 +54,10 @@ export async function listComputers(): Promise<ComputerSummary[]> {
   }));
 }
 
+export function getAllConversationEnvs(): Record<string, ComputerSelectorField | null> {
+  return { ...(load().conversationEnvs ?? {}) };
+}
+
 export function getConversationEnv(conversationId: string): ConversationEnv {
   const selector = load().conversationEnvs?.[conversationId];
   return selector === undefined ? { selector: undefined } : { selector: selector ?? null };

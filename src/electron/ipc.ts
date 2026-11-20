@@ -37,7 +37,7 @@ import {
   switchSavedConnection,
   updateSettings,
 } from "./libs/settings.js";
-import { getConversationEnv, listComputers, setConversationEnv } from "./libs/env.js";
+import { getAllConversationEnvs, getConversationEnv, listComputers, setConversationEnv } from "./libs/env.js";
 import { intakeFiles } from "./libs/attachments.js";
 import { deleteSchedule, listSchedules, pauseSchedule, resumeSchedule, triggerSchedule } from "./libs/schedules.js";
 import {
@@ -104,6 +104,7 @@ const handlers: Handlers = {
   getSettings,
   listComputers: () => listComputers(),
   getConversationEnv,
+  getAllConversationEnvs,
   setConversationEnv: (input) => setConversationEnv(input.conversationId, input.selector),
   getExecutionMode: () => load().executionMode ?? "local",
   getRemoteEnvName: () => load().remoteEnvName ?? "",

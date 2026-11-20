@@ -107,6 +107,7 @@ function createBridge() {
     resumeSchedule: vi.fn().mockResolvedValue(undefined),
     deleteSchedule: vi.fn().mockResolvedValue(undefined),
     triggerSchedule: vi.fn().mockResolvedValue(undefined),
+    getAllConversationEnvs: vi.fn().mockResolvedValue({}),
   } satisfies Record<keyof AppBridge, unknown>;
 }
 

@@ -201,6 +201,7 @@ type AppState = {
   /** Seed adoption state from the main process (events only fire on CHANGE —
    * adoption during connect() predates the renderer's subscription). */
   refreshRemoteAdoption: () => void;
+  hydrateEnvOverrides: () => void;
   refreshRemoteHandover: () => void;
   refreshPinnedConversations: () => void;
   togglePinnedConversation: (conversationId: string) => void;
@@ -427,6 +428,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       void get().refreshModels();
       void get().refreshExecutionMode();
       get().refreshPinnedConversations();
+      get().hydrateEnvOverrides();
       void window.bridge.getReadCursors().then((cursors) => set({ readCursors: cursors }));
       get().refreshRemoteAdoption();
       get().refreshRemoteHandover();
@@ -825,6 +827,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     void window.bridge.getRemoteHandover().then((handover) => {
       set({ remoteHandover: handover });
     });
+  },
+
+  /** Hydrate persisted per-conversation env picks from settings (the store
+   * starts empty; without this every restart fell to mode-default targets). */
+  hydrateEnvOverrides: () => {
+    void window.bridge
+      .getAllConversationEnvs()
+      .then((envOverrides) => set({ envOverrides }))
+      .catch(() => undefined);
   },
 
   refreshRemoteAdoption: () => {
