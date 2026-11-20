@@ -206,6 +206,18 @@ const EFFORT_TIERS: Array<{
 ];
 
 function EffortMenu() {
+  // The model's catalog default effort, when published — surfaces what Auto
+  // means for THIS model (e.g. glm: Auto IS max reasoning).
+  const defaultEffortRaw = useAppStore((state) => {
+    const activeId2 = state.activeId;
+    const handle = activeId2
+      ? state.modelOverrides[activeId2] ??
+        state.conversations.find((item) => item.id === activeId2)?.model
+      : state.modelOverrides[NEW_CHAT];
+    const row = state.models.find((m) => m.handle === handle);
+    return row?.defaultEffort ?? null;
+  });
+  const defaultEffortLabel = defaultEffortRaw ?? "";
   const activeId = useAppStore((state) => state.activeId);
   const models = useAppStore((state) => state.models);
   const modelHandle = useAppStore((state) =>
@@ -237,8 +249,14 @@ function EffortMenu() {
           >
             <span className="w-4 shrink-0">{effort === undefined ? <CheckIcon className="h-4 w-4 text-accent" /> : null}</span>
             <span>
-              <span className="block">Auto</span>
-              <span className="block text-xs text-muted">Model default</span>
+              <span className="block">
+                Auto{defaultEffortLabel ? ` (${defaultEffortLabel})` : ""}
+              </span>
+              <span className="block text-xs text-muted">
+                {defaultEffortLabel
+                  ? `The model's default effort — ${defaultEffortLabel}`
+                  : "Model default"}
+              </span>
             </span>
           </DropdownMenu.Item>
           {EFFORT_TIERS.filter((tier) => supportedEffortsFor(modelHandle, models).includes(tier.effort)).map((tier) => (

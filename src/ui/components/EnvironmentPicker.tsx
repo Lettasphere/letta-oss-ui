@@ -120,6 +120,24 @@ export function EnvironmentPicker() {
             return pick.name ? `${pick.name} (offline)` : 'device';
           })();
 
+  // The default target's REAL name (no explicit pick): the machine's live
+  // registration — adoption.name, else ownRemote's effective name, else the
+  // online registry row on the machine device. Never a bare "This computer"
+  // when the actual registration name is knowable.
+  const defaultTargetLabel = (): string => {
+    if (mode === "local") return "This computer";
+    if (mode === "cloud-only") return "Cloud sandbox";
+    if (adoption.kind === "adopted" && adoption.name) return adoption.name;
+    if (ownRemote?.running && ownRemote.effectiveName) return ownRemote.effectiveName;
+    const deviceId =
+      adoption.kind !== "none" ? adoption.deviceId : undefined;
+    const online = deviceId
+      ? computers.find((c) => c.deviceId === deviceId && c.status === "online")
+      : undefined;
+    if (online?.name) return online.name;
+    return "This computer";
+  };
+
   // Convergence loop: while the chip's resolution is DEGRADED (handover in
   // flight, or the picked machine has no online registration), the registry
   // view may lag reality — the replacement registration takes seconds to
@@ -189,12 +207,7 @@ export function EnvironmentPicker() {
             ? "Connection lost — switching…"
             : envOverride === null
               ? "Cloud sandbox"
-              : current ||
-                (mode === "local"
-                  ? "This computer"
-                  : mode === "remote-env"
-                    ? "This computer"
-                    : "Cloud sandbox")}
+              : current || defaultTargetLabel()}
         </span>
         <ChevronDownIcon className="h-3 w-3 shrink-0" />
       </button>
