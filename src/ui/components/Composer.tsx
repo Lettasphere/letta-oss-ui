@@ -57,11 +57,13 @@ function FolderMenu({ cwd }: { cwd: string }) {
     // 10s timeout: a websocket to a dead lease can hang the chain forever,
     // freezing the chip at "Remote". Losing the race = retry next open.
     const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000));
+    const resolvedRef = { done: false };
     void Promise.race([
       window.bridge
         .getTargetFolder({ targetKey })
         .then((remembered) => {
           if (remembered) {
+            resolvedRef.done = true;
             setTargetFolder(remembered);
             return;
           }
@@ -88,7 +90,38 @@ function FolderMenu({ cwd }: { cwd: string }) {
           setTargetFolder(null);
         }),
       timeout,
-    ]).finally(() => setFolderResolving(false));
+    ]).finally(() => {
+      setFolderResolving(false);
+      // Boot-race self-heal: 'registration not up yet' fails once at startup
+      // and without a retry the chip stays 'Remote' forever. Retry with
+      // backoff until a folder resolves (bounded: 5 tries, 2s→16s).
+      // resolvedRef guards against the stale-closure targetFolder check.
+      {
+        let attempt = 0;
+        const retry = () => {
+          attempt += 1;
+          if (attempt > 5 || resolvedRef.done) return;
+          setTimeout(() => {
+            void window.bridge
+              .getDefaultDirectory({
+                selector: targetDeviceId
+                  ? { deviceId: targetDeviceId }
+                  : effectiveEnv === "remote"
+                    ? "remote-default"
+                    : null,
+              })
+              .then((def) => {
+                if (def) {
+                  resolvedRef.done = true;
+                  setTargetFolder(def);
+                } else retry();
+              })
+              .catch(() => retry());
+          }, Math.min(2000 * 2 ** (attempt - 1), 16000));
+        };
+        retry();
+      }
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveEnv, targetKey]);
 
