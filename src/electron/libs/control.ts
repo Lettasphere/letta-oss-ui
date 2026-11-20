@@ -50,16 +50,22 @@ function isReply(message: unknown, type: string, requestId: string): message is 
 export async function request<TResponse extends Reply>(
   type: string,
   body: Record<string, unknown>,
+  timeoutMs = 30_000,
 ): Promise<TResponse> {
   const client = await connect();
   const requestId = client.nextRequestId(type);
-  const response = await client.requestRaw<Reply & Record<string, unknown>>(
-    { type, request_id: requestId, ...body },
-    {
-      predicate: (message): message is Reply & Record<string, unknown> =>
-        isReply(message, `${type}_response`, requestId),
-    },
-  );
+  const response = await Promise.race([
+    client.requestRaw<Reply & Record<string, unknown>>(
+      { type, request_id: requestId, ...body },
+      {
+        predicate: (message): message is Reply & Record<string, unknown> =>
+          isReply(message, `${type}_response`, requestId),
+      },
+    ),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`${type} timed out after ${timeoutMs}ms`)), timeoutMs),
+    ),
+  ]);
   if (response.success === false) throw new Error(response.error ?? `${type} failed.`);
   return response as unknown as TResponse;
 }

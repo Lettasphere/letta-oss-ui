@@ -1009,7 +1009,10 @@ export function supportedEffortsFor(
     google: ["low", "medium", "high"],
     deepseek: ["low", "medium", "high"],
   };
-  return table[provider] ?? ALL;
+  // The fallback is as honest as the live path: filter through the sendable
+  // set too — a menu tier that silently no-ops at send is a fake mapping
+  // with a label (Uncia finding 3).
+  return (table[provider] ?? ALL).filter((e) => SDK_SENDABLE.includes(e));
 }
 
 /** The folder the NEXT message uses: environment-scoped pick first, else the
