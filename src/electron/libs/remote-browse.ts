@@ -176,10 +176,21 @@ export function clearBrowseCache(): void {
 
 /** The target's default working directory (boot_working_directory). */
 export async function getDefaultDirectory(
-  selector: ComputerSelector | null,
+  selector: ComputerSelector | string | null,
 ): Promise<string> {
-  const transport: RawClient = selector
-    ? await envListClientFor(selector)
+  // "remote-default": the app's remote-env mode target — this machine's own
+  // registration (the spawn the runtime owns). Resolves via its connection.
+  let effectiveSelector: ComputerSelector | null = null;
+  if (selector === "remote-default") {
+    const { remoteEnvState } = await import("./remote-env.js");
+    const state = remoteEnvState();
+    if (state.connectionId) effectiveSelector = { connectionId: state.connectionId };
+    else throw new Error("This machine's remote registration is not up yet.");
+  } else {
+    effectiveSelector = (selector ?? null) as ComputerSelector | null;
+  }
+  const transport: RawClient = effectiveSelector
+    ? await envListClientFor(effectiveSelector)
     : await sandboxTransport();
   const requestId = `dflt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const reply = (await transport.requestRaw(

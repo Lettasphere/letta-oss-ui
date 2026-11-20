@@ -65,11 +65,16 @@ function FolderMenu({ cwd }: { cwd: string }) {
             setTargetFolder(remembered);
             return;
           }
-          // No remembered pick: discover and show the target's own default.
-          return window.bridge
-            .getDefaultDirectory({
-              selector: targetDeviceId ? { deviceId: targetDeviceId } : null,
-            })
+          // No remembered pick: discover the target's own default. In
+          // remote-env mode the default target IS this machine's registration —
+          // null would fall to the sandbox transport (credit-walled).
+          return window.bridge.getDefaultDirectory({
+            selector: targetDeviceId
+              ? { deviceId: targetDeviceId }
+              : effectiveEnv === "remote"
+                ? "remote-default"
+                : null,
+          })
             .then((def) => {
               setTargetFolder(def);
             })
