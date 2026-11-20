@@ -50,6 +50,14 @@ function FolderMenu({ cwd }: { cwd: string }) {
   const [folderResolving, setFolderResolving] = useState(false);
   useEffect(() => {
     if (effectiveEnv !== "sandbox" && effectiveEnv !== "remote") return;
+    // Retry timers die with the effect (navigation unmount) — no zombie retries.
+    const pendingTimers: ReturnType<typeof setTimeout>[] = [];
+    const originalSetTimeout = setTimeout;
+    const scopedSetTimeout = ((fn: () => void, ms?: number) => {
+      const id = originalSetTimeout(fn, ms);
+      pendingTimers.push(id);
+      return id;
+    }) as typeof setTimeout;
     // Target changed: clear immediately — never show the previous target's
     // folder while this one resolves.
     setTargetFolder(null);
@@ -101,27 +109,40 @@ function FolderMenu({ cwd }: { cwd: string }) {
         const retry = () => {
           attempt += 1;
           if (attempt > 5 || resolvedRef.done) return;
-          setTimeout(() => {
-            void window.bridge
-              .getDefaultDirectory({
+          scopedSetTimeout(() => {
+            // Whole retry body guarded: a synchronous throw anywhere in the
+            // chain (bridge gone mid-navigation, etc.) must not kill the loop.
+            try {
+              const pending = window.bridge.getDefaultDirectory({
                 selector: targetDeviceId
                   ? { deviceId: targetDeviceId }
                   : effectiveEnv === "remote"
                     ? "remote-default"
                     : null,
-              })
-              .then((def) => {
-                if (def) {
-                  resolvedRef.done = true;
-                  setTargetFolder(def);
-                } else retry();
-              })
-              .catch(() => retry());
+              });
+              if (pending && typeof pending.then === "function") {
+                void pending
+                  .then((def) => {
+                    if (def) {
+                      resolvedRef.done = true;
+                      setTargetFolder(def);
+                    } else retry();
+                  })
+                  .catch(() => retry());
+              } else {
+                retry();
+              }
+            } catch {
+              retry();
+            }
           }, Math.min(2000 * 2 ** (attempt - 1), 16000));
         };
         retry();
       }
     });
+    return () => {
+      for (const id of pendingTimers) clearTimeout(id);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveEnv, targetKey]);
 
@@ -243,10 +264,17 @@ function EffortMenu() {
   // means for THIS model (e.g. glm: Auto IS max reasoning).
   const defaultEffortRaw = useAppStore((state) => {
     const activeId2 = state.activeId;
-    const handle = activeId2
-      ? state.modelOverrides[activeId2] ??
-        state.conversations.find((item) => item.id === activeId2)?.model
-      : state.modelOverrides[NEW_CHAT];
+    // Model resolution order mirrors the send path: conversation override →
+    // conversation model → NEW_CHAT override → the AGENT's default model.
+    // Without the agent fallback, new chats (no model anywhere yet) showed
+    // plain "Auto" instead of "Auto (max)".
+    const handle =
+      (activeId2
+        ? state.modelOverrides[activeId2] ??
+          state.conversations.find((item) => item.id === activeId2)?.model
+        : state.modelOverrides[NEW_CHAT]) ??
+      state.agents.find((a) => a.id === state.agentId)?.model ??
+      null;
     const row = state.models.find((m) => m.handle === handle);
     return row?.defaultEffort ?? null;
   });
