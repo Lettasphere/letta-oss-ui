@@ -39,7 +39,12 @@ export function selectEffectiveEnvironment(state: {
   if (override === null) return "sandbox";
   if (override !== undefined) return "remote"; // any explicit selector
   // No explicit pick: the mode default IS the effective environment.
-  return state.executionMode === "local" ? "local-app" : "sandbox";
+  // remote-env mode's whole point is "this computer's registration" — its
+  // default target is remote (the adopted/owned machine), NOT sandbox.
+  // Sandbox is the default only in cloud-only mode.
+  if (state.executionMode === "local") return "local-app";
+  if (state.executionMode === "remote-env") return "remote";
+  return "sandbox";
 }
 
 function labelForComputer(
@@ -953,6 +958,9 @@ export function targetKeyFor(state: {
     return String(override.deviceId);
   }
   if (override !== undefined) return "remote";
+  // No explicit pick: mirror selectEffectiveEnvironment — remote-env's
+  // default is this computer's registration, not sandbox.
+  if (mode === "remote-env") return "remote";
   return mode === "local" ? "local" : "sandbox";
 }
 

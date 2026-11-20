@@ -30,8 +30,11 @@ export function EnvironmentPicker() {
   // mode's default. Private mode defaults to this computer's app server;
   // every other mode defaults to the cloud sandbox. Exactly one row is
   // "current" in every state — "nothing picked" is not a state.
+  // Defaults follow the mode: local → this app; remote-env → this computer's
+  // registration (NOT sandbox — that mode exists to run here); cloud-only → sandbox.
   const effectiveIsLocalApp = mode === "local" && envOverride === undefined;
-  const effectiveIsSandbox = envOverride === null || (envOverride === undefined && mode !== "local");
+  const effectiveIsSandbox =
+    envOverride === null || (envOverride === undefined && mode === "cloud-only");
   const [ownRemote, setOwnRemote] = useState<{
     running: boolean;
     effectiveName: string | null;
