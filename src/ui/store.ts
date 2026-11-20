@@ -84,7 +84,7 @@ export type MemoryState = {
   files: MemoryFile[];
 };
 
-export type SettingsTab = "connection" | "providers";
+export type SettingsTab = "connection" | "providers" | "schedules";
 
 const EMPTY_CHAT: ChatState = {
   rows: [],

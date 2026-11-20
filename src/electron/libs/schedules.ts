@@ -16,6 +16,7 @@ export interface CronTask {
   scheduled_for?: string | null;
   conversation_id?: string;
   agent_id?: string;
+  paused?: boolean;
 }
 
 export async function listSchedules(agentId: string): Promise<CronTask[]> {
