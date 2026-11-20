@@ -834,7 +834,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   hydrateEnvOverrides: () => {
     void window.bridge
       .getAllConversationEnvs()
-      .then((envOverrides) => set({ envOverrides }))
+      .then((all) => {
+        // The NEW_CHAT key's null (an old explicit-sandbox click) must not
+        // pin every future chat to sandbox — drop it so the mode default
+        // (remote-env = this computer) rules new chats. Conversation-nulls
+        // stay: they were deliberate per-chat picks.
+        const envOverrides = { ...all };
+        if (envOverrides[NEW_CHAT] === null) delete envOverrides[NEW_CHAT];
+        set({ envOverrides });
+      })
       .catch(() => undefined);
   },
 
