@@ -124,7 +124,18 @@ export function AgentRail() {
 
   const agentReadFloors = useAppStore((state) => state.agentReadFloors);
 
+  // The SELECTED agent's unread derives from the SAME state the sidebar
+  // renders (loaded conversations + cursors + floor) — never the 30s poll,
+  // which lags and de-syncs. Unselected agents use the poll (their lists
+  // aren't loaded).
+  const conversations = useAppStore((state) => state.conversations);
+
   const unreadFor = (id: string): boolean => {
+    if (id === agentId) {
+      return conversations.some(
+        (c) => Math.max(readCursors[c.id] ?? 0, agentReadFloors[id] ?? 0) < c.updatedAt,
+      );
+    }
     const s = railStatus[id];
     if (!s?.latestAt || !s.latestConversationId) return false;
     const cursor = Math.max(
