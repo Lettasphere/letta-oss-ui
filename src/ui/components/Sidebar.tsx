@@ -5,8 +5,6 @@ import { modelLabel, relativeTime } from "../lib/format";
 import { useAppStore } from "../store";
 import type { ConnectionState, ConversationSummary } from "../types";
 import { ClockIcon, 
-  CheckIcon,
-  ChevronDownIcon,
   MemoryIcon,
   MoreIcon,
   PlusIcon,
@@ -22,17 +20,25 @@ const menuItem =
   "flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink-800 outline-none data-[highlighted]:bg-surface-tertiary";
 
 function AgentSwitcher() {
+  // Selection moved to the left AgentRail — this is now an identity card:
+  // current agent's name + model; click opens agent settings. The rail
+  // owns switching; the card owns configuration.
   const agents = useAppStore((state) => state.agents);
   const agentId = useAppStore((state) => state.agentId);
   const models = useAppStore((state) => state.models);
-  const selectAgent = useAppStore((state) => state.selectAgent);
   const setNewAgentOpen = useAppStore((state) => state.setNewAgentOpen);
   const setAgentSettingsOpen = useAppStore((state) => state.setAgentSettingsOpen);
   const current = agents.find((agent) => agent.id === agentId);
 
   return (
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger className="flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left hover:bg-ink-900/5 transition-colors outline-none">
+    <div className="flex items-center gap-1.5">
+      <button
+        type="button"
+        disabled={!current}
+        onClick={() => setAgentSettingsOpen(true)}
+        className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-2.5 py-2 text-left hover:bg-ink-900/5 transition-colors outline-none disabled:cursor-not-allowed disabled:opacity-50"
+        title="Agent settings"
+      >
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-semibold text-ink-900">
             {current?.name ?? "No agent"}
@@ -41,43 +47,17 @@ function AgentSwitcher() {
             {current ? modelLabel(current.model, models) : "Create an agent to begin"}
           </span>
         </span>
-        <ChevronDownIcon className="h-4 w-4 shrink-0 text-muted" />
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content className={`${menuContent} w-[256px]`} align="start" sideOffset={6}>
-          <div className="max-h-72 overflow-y-auto">
-            {agents.map((agent) => (
-              <DropdownMenu.Item
-                key={agent.id}
-                className={menuItem}
-                onSelect={() => agent.id !== agentId && void selectAgent(agent.id)}
-              >
-                <span className="w-4 shrink-0">
-                  {agent.id === agentId && <CheckIcon className="h-4 w-4 text-accent" />}
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate">{agent.name}</span>
-                  <span className="block truncate text-xs text-muted">
-                    {modelLabel(agent.model, models)}
-                  </span>
-                </span>
-              </DropdownMenu.Item>
-            ))}
-          </div>
-          {agents.length > 0 && <DropdownMenu.Separator className="my-1 h-px bg-border" />}
-          {current && (
-            <DropdownMenu.Item className={menuItem} onSelect={() => setAgentSettingsOpen(true)}>
-              <SettingsIcon className="h-4 w-4 shrink-0 text-muted" />
-              Agent settings...
-            </DropdownMenu.Item>
-          )}
-          <DropdownMenu.Item className={menuItem} onSelect={() => setNewAgentOpen(true)}>
-            <PlusIcon className="h-4 w-4 shrink-0 text-muted" />
-            New agent...
-          </DropdownMenu.Item>
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
+      </button>
+      <button
+        type="button"
+        onClick={() => setNewAgentOpen(true)}
+        aria-label="New agent"
+        title="New agent"
+        className="shrink-0 rounded-lg p-1.5 text-muted hover:bg-surface-tertiary hover:text-ink-900 transition-colors"
+      >
+        <PlusIcon className="h-4 w-4" />
+      </button>
+    </div>
   );
 }
 
