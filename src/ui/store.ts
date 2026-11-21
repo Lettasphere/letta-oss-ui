@@ -125,6 +125,10 @@ type AppState = {
   conversationAgentIndex: Record<string, string>;
   /** Conversations with a live turn — cross-agent working signal. */
   runningConversations: Set<string>;
+  /** Per-agent latest activity ms — bumped by conversation.updated for ANY
+   *  agent (not just selected). The unselected-unread signal derives from
+   *  this live, with the 30s poll as cron-only backstop. */
+  agentActivity: Record<string, number>;
   /** Handover lifecycle: disconnect detected → switching → stable. */
   remoteHandover: { phase: "stable" } | { phase: "switching"; since: number; reason: string };
   /** Live adoption state (owned vs adopted registration) — event-driven. */
@@ -270,6 +274,7 @@ const CLEARED = {
   agentReadFloors: {},
   conversationAgentIndex: {},
   runningConversations: new Set<string>(),
+  agentActivity: {},
   remoteAdoption: { kind: "none" },
   remoteAuth: { status: "idle" },
   providers: null,
@@ -425,6 +430,18 @@ export const useAppStore = create<AppState>((set, get) => ({
         );
         break;
       case "conversation.updated": {
+        // ANY agent's activity bumps its freshness — the unselected-unread
+        // dot derives from this live (the 30s poll only covers cron fires
+        // that don't emit conversation.updated).
+        if (event.conversation.agentId) {
+          const at = event.conversation.updatedAt ?? Date.now();
+          set((state) => ({
+            agentActivity: {
+              ...state.agentActivity,
+              [event.conversation.agentId]: Math.max(at, state.agentActivity[event.conversation.agentId] ?? 0),
+            },
+          }));
+        }
         // An update to the OPEN conversation is seen the moment it renders.
         if (event.conversation.agentId !== get().agentId) break;
         set((state) => ({

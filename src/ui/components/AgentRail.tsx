@@ -140,6 +140,7 @@ export function AgentRail() {
   }, [agents, noteConversationAgent]);
 
   const agentReadFloors = useAppStore((state) => state.agentReadFloors);
+  const agentActivity = useAppStore((state) => state.agentActivity);
 
   // The SELECTED agent's unread derives from the SAME state the sidebar
   // renders (loaded conversations + cursors + floor) — never the 30s poll,
@@ -161,11 +162,17 @@ export function AgentRail() {
           Math.max(readCursors[c.id] ?? 0, agentReadFloors[id] ?? 0) < c.updatedAt,
       );
     }
+    // Unselected agents: LIVE event-driven freshness first — any
+    // conversation.updated for this agent bumped agentActivity. The 30s
+    // poll is the cron-only backstop (fires that emit no events).
+    const floor = agentReadFloors[id] ?? 0;
+    const liveAt = agentActivity[id];
+    if (liveAt !== undefined) return liveAt > floor;
     const s = railStatus[id];
     if (!s?.latestAt || !s.latestConversationId) return false;
     const cursor = Math.max(
       readCursors[s.latestConversationId] ?? 0,
-      agentReadFloors[id] ?? 0,
+      floor,
     );
     return new Date(s.latestAt).getTime() > cursor;
   };
