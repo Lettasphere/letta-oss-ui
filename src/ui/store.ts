@@ -84,7 +84,7 @@ export type MemoryState = {
   files: MemoryFile[];
 };
 
-export type SettingsTab = "connection" | "providers" | "schedules";
+export type SettingsTab = "connection" | "providers";
 
 const EMPTY_CHAT: ChatState = {
   rows: [],
@@ -136,7 +136,7 @@ type AppState = {
   /** null until loaded, or when the backend manages providers itself. */
   providers: ProviderSummary[] | null;
   /** What the main area shows for the selected agent. */
-  view: "chat" | "memory";
+  view: "chat" | "memory" | "schedules";
   memory: MemoryState | null;
   conversations: ConversationSummary[];
   conversationsLoading: boolean;
@@ -185,6 +185,7 @@ type AppState = {
   }) => Promise<void>;
   disconnectProvider: (input: { providerId: string; providerName?: string }) => Promise<void>;
   openMemory: () => void;
+  openSchedules: () => void;
   loadMemory: () => Promise<void>;
   saveMemoryFile: (path: string, content: string) => Promise<void>;
   deleteMemoryFile: (path: string) => Promise<void>;
@@ -742,6 +743,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   openMemory: () => {
     set({ view: "memory" });
+  },
+
+  openSchedules: () => {
+    set({ view: "schedules" });
     void get().loadMemory();
   },
 

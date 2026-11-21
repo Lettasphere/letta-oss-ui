@@ -4,7 +4,7 @@ import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { modelLabel, relativeTime } from "../lib/format";
 import { useAppStore } from "../store";
 import type { ConnectionState, ConversationSummary } from "../types";
-import {
+import { ClockIcon, 
   CheckIcon,
   ChevronDownIcon,
   MemoryIcon,
@@ -293,6 +293,8 @@ export function Sidebar() {
   const connection = useAppStore((state) => state.connection);
   const openChat = useAppStore((state) => state.openChat);
   const openMemory = useAppStore((state) => state.openMemory);
+  const openSchedules = useAppStore((state) => state.openSchedules);
+  const schedulesOpen = useAppStore((state) => state.view === "schedules");
   const openSettings = useAppStore((state) => state.openSettings);
   const memoryOpen = useAppStore((state) => state.view === "memory");
   const [renaming, setRenaming] = useState<ConversationSummary | null>(null);
@@ -336,6 +338,16 @@ export function Sidebar() {
         >
           <MemoryIcon className="h-4 w-4" />
           Memory
+        </button>
+        <button
+          type="button"
+          disabled={!agentId}
+          onClick={openSchedules}
+          aria-pressed={schedulesOpen}
+          className={`mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${schedulesOpen ? "bg-ink-900/8 text-ink-900" : "text-ink-800 hover:bg-ink-900/5"}`}
+        >
+          <ClockIcon className="h-4 w-4" />
+          Schedules
         </button>
       </div>
 
