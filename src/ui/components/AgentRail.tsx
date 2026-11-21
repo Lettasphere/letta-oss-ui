@@ -123,7 +123,6 @@ export function AgentRail() {
   }, [agents]);
 
   const unreadFor = (id: string): boolean => {
-    if (id === agentId) return false; // selected agent is "seen" by definition
     const s = railStatus[id];
     if (!s?.latestAt || !s.latestConversationId) return false;
     const cursor = readCursors[s.latestConversationId] ?? 0;
@@ -195,7 +194,7 @@ export function AgentRail() {
                 </button>
               </span>
             )}
-            {!selected && unreadFor(agent.id) && (
+            {unreadFor(agent.id) && (
               <span
                 className="absolute -top-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-sidebar bg-accent"
                 title="Unread activity"
