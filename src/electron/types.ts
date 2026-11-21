@@ -242,6 +242,7 @@ export type AppRequests = {
   getConversationEnv(conversationId: string): ConversationEnv;
   getAllConversationEnvs(): Record<string, ComputerSelectorField | null>;
   getAgentLayout(): { order: string[]; pinned: string[] };
+  agentRailStatus(input: { agentId: string }): Promise<{ agentId: string; latestAt: string | null; latestConversationId: string | null }>;
   setAgentLayout(input: { order: string[]; pinned: string[] }): { order: string[]; pinned: string[] };
   setConversationEnv(input: {
     conversationId: string;

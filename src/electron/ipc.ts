@@ -39,6 +39,7 @@ import {
   updateSettings,
 } from "./libs/settings.js";
 import { getAllConversationEnvs, getConversationEnv, listComputers, setConversationEnv } from "./libs/env.js";
+import { agentRailStatus } from "./libs/agent-status.js";
 import { intakeFiles } from "./libs/attachments.js";
 import { deleteSchedule, listSchedules, pauseSchedule, resumeSchedule, triggerSchedule } from "./libs/schedules.js";
 import {
@@ -107,6 +108,7 @@ const handlers: Handlers = {
   getConversationEnv,
   getAllConversationEnvs,
   setConversationEnv: (input) => setConversationEnv(input.conversationId, input.selector),
+  agentRailStatus: (input) => agentRailStatus(input.agentId),
   getAgentLayout: () => ({ order: load().agentOrder ?? [], pinned: load().pinnedAgents ?? [] }),
   setAgentLayout: (input) => {
     save({ ...load(), agentOrder: input.order, pinnedAgents: input.pinned });

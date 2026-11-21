@@ -7,6 +7,7 @@ const METHODS = [
   "getConversationEnv",
   "getAllConversationEnvs",
   "getAgentLayout",
+  "agentRailStatus",
   "setAgentLayout",
   "setConversationEnv",
   "getExecutionMode",

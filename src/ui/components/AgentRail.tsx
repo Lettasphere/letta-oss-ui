@@ -4,7 +4,7 @@
  * Selects the agent like the old dropdown did; that dropdown remains for
  * settings/new-agent access. Unread indicator rides the selected agent.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useAppStore } from "../store";
 
@@ -90,6 +90,45 @@ export function AgentRail() {
   const selectAgent = useAppStore((state) => state.selectAgent);
   const rail = useRailLayout();
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  // Cross-agent unread: poll each agent's latest conversation activity and
+  // compare against the read cursors (persisted per conversation). An agent
+  // is UNREAD when its latest conversation has activity newer than its cursor.
+  const [railStatus, setRailStatus] = useState<
+    Record<string, { latestAt: string | null; latestConversationId: string | null }>
+  >({});
+  const readCursors = useAppStore((state) => state.readCursors);
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      const next: typeof railStatus = {};
+      await Promise.all(
+        agents.map(async (agent) => {
+          try {
+            const s = await window.bridge.agentRailStatus({ agentId: agent.id });
+            next[agent.id] = { latestAt: s.latestAt, latestConversationId: s.latestConversationId };
+          } catch {
+            /* agent unreachable — leave absent = no dot */
+          }
+        }),
+      );
+      if (!cancelled) setRailStatus(next);
+    };
+    void poll();
+    const timer = setInterval(() => void poll(), 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [agents]);
+
+  const unreadFor = (id: string): boolean => {
+    if (id === agentId) return false; // selected agent is "seen" by definition
+    const s = railStatus[id];
+    if (!s?.latestAt || !s.latestConversationId) return false;
+    const cursor = readCursors[s.latestConversationId] ?? 0;
+    return new Date(s.latestAt).getTime() > cursor;
+  };
 
   // Order: pinned first (by pin order), then saved order, then API order.
   const rank = (id: string) => {
@@ -155,6 +194,12 @@ export function AgentRail() {
                   Move down
                 </button>
               </span>
+            )}
+            {!selected && unreadFor(agent.id) && (
+              <span
+                className="absolute -top-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-sidebar bg-accent"
+                title="Unread activity"
+              />
             )}
             {selected && working && (
               <span
