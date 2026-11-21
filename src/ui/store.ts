@@ -210,6 +210,7 @@ type AppState = {
   refreshPinnedConversations: () => void;
   togglePinnedConversation: (conversationId: string) => void;
   markConversationRead: (conversationId: string, updatedAt: number) => void;
+  advanceReadState: (conversationId: string, seenAt: number) => void;
   markAllRead: () => void;
   pickEnvironment: (selector: ComputerSelectorField | null | undefined) => void;
   /** Set the working folder for the ACTIVE conversation on the ACTIVE
@@ -408,10 +409,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       case "conversation.updated": {
         // An update to the OPEN conversation is seen the moment it renders.
         if (get().activeId === event.conversation.id) {
-          void window.bridge
-            .markConversationRead({ conversationId: event.conversation.id, updatedAt: event.conversation.updatedAt })
-            .then((cursors) => set({ readCursors: cursors }))
-            .catch(() => undefined);
+          get().advanceReadState(event.conversation.id, Date.now());
         }
         if (event.conversation.agentId !== get().agentId) break;
         set((state) => ({
@@ -475,6 +473,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   selectAgent: async (agentId) => {
+    // Idempotent: re-selecting the already-loaded agent must not wipe to a
+    // loading state (stray re-clicks / restore races looked like the app
+    // resetting on conversation click).
+    if (get().agentId === agentId && get().conversationsLoaded) return;
     set({
       agentId,
       conversationsLoading: true,
@@ -490,7 +492,6 @@ export const useAppStore = create<AppState>((set, get) => ({
       .then((settings) => set({ settings }))
       .catch(() => undefined);
     try {
-      const t0 = Date.now();
       // Restore the agent's last-open conversation (not a forced new chat).
       try {
         const stored = (await api.getSettings()).lastConversationByAgent?.[agentId];
@@ -850,6 +851,30 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({
       cwdOverrides: { ...state.cwdOverrides, [state.activeId ?? NEW_CHAT]: cwd },
     })),
+
+  /** THE single write path for read state — keeps cursors, floors, and any
+   *  derived unread signals in sync. Every read-marking flows through here. */
+  advanceReadState: (conversationId: string, seenAt: number) => {
+    const agentId = get().agentId;
+    void window.bridge
+      .markConversationRead({ conversationId, updatedAt: seenAt })
+      .then((cursors) => {
+        set((state) => {
+          const next: Partial<AppState> = { readCursors: cursors };
+          // If the conversation's agent is selected and NO loaded
+          // conversation is now unread, floor that agent — the sidebar
+          // list and the rail dot derive from the same state, so both
+          // clear together.
+          const convs = state.conversations;
+          const stillUnread = convs.some((c) => (cursors[c.id] ?? 0) < c.updatedAt);
+          if (agentId && !stillUnread && convs.length > 0) {
+            next.agentReadFloors = { ...state.agentReadFloors, [agentId]: Math.max(seenAt, state.agentReadFloors[agentId] ?? 0) };
+          }
+          return next;
+        });
+      })
+      .catch(() => undefined);
+  },
 
   markConversationRead: (conversationId: string, updatedAt: number) => {
     void window.bridge
