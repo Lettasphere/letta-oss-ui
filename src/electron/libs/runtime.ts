@@ -398,12 +398,14 @@ export async function listConversationsFirstPage(
   // field check), probes deferred to the full load. Rows that later fail
   // the husk probe get removed when the full list lands.
   const sdk = await ensureClient();
-  const page = await sdk.conversations.list({ agentId, limit: pageSize });
+  // Over-fetch: the SDK projection nulls summary/last_message_at on many
+  // real rows — the strict filter left ~1 visible row on null-heavy days
+  // (the "infinite loading" look). Archived-only filter + slice AFTER:
+  // the husk probe in the full load removes empty rows later.
+  const page = await sdk.conversations.list({ agentId, limit: 100 });
   return page
-    .filter(
-      (conversation) =>
-        !conversation.archived && Boolean(conversation.summary || conversation.last_message_at),
-    )
+    .filter((conversation) => !conversation.archived)
+    .slice(0, pageSize)
     .map(toConversationSummary)
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }

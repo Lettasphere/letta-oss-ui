@@ -501,14 +501,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       // Progressive: first 25 paint immediately (cheap filter, no probes);
       // the full verified list replaces it when ready.
       const first = await api.listConversationsFirstPage(agentId);
-      console.log(`[timing] first page: ${Date.now() - t0}ms, ${first.length} rows`);
       if (get().agentId === agentId && get().conversations.length === 0) {
         // First paint IS a loaded state — clear the loading flag here; the
         // full verified list silently replaces the content later.
         set({ conversations: first, conversationsLoading: false, conversationsLoaded: true });
       }
       const conversations = await api.listConversations(agentId);
-      console.log(`[timing] full load: ${Date.now() - t0}ms, ${conversations.length} rows`);
       if (get().agentId === agentId) {
         const cursors = get().readCursors;
         const anyUnread = conversations.some(
