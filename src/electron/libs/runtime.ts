@@ -394,17 +394,32 @@ export async function listConversationsFirstPage(
   agentId: string,
   pageSize = 25,
 ): Promise<ConversationSummary[]> {
-  // Fast first paint: first page of the list, cheap filter only (archived +
-  // field check), probes deferred to the full load. Rows that later fail
-  // the husk probe get removed when the full list lands.
+  // Fast first paint WITHOUT husk flash: over-fetch 100, drop archived and
+  // title-less rows (husks render as "New chat"), then PROBE the first
+  // batch concurrently — verified rows in ~2s. The title filter alone let
+  // named cron shells through; the probe alone was too slow; both = right.
   const sdk = await ensureClient();
-  // Over-fetch: the SDK projection nulls summary/last_message_at on many
-  // real rows — the strict filter left ~1 visible row on null-heavy days
-  // (the "infinite loading" look). Archived-only filter + slice AFTER:
-  // the husk probe in the full load removes empty rows later.
   const page = await sdk.conversations.list({ agentId, limit: 100 });
-  return page
-    .filter((conversation) => !conversation.archived)
+  const titled = page.filter(
+    (conversation) =>
+      !conversation.archived &&
+      Boolean(conversation.summary || conversation.last_message_at || conversation.name),
+  );
+  // Probe up to 2x pageSize candidates concurrently (10-wide) — enough
+  // survive husks to fill the page.
+  const candidates = titled.slice(0, pageSize * 2);
+  const verdicts = await Promise.all(
+    candidates.map((_, index) => {
+      const chunk = Math.floor(index / 10);
+      return new Promise<boolean>((resolve) => {
+        setTimeout(() => {
+          void hasMessages(sdk, candidates[index]!.id).then(resolve, () => resolve(false));
+        }, chunk * 150);
+      });
+    }),
+  );
+  return candidates
+    .filter((_, i) => verdicts[i])
     .slice(0, pageSize)
     .map(toConversationSummary)
     .sort((a, b) => b.updatedAt - a.updatedAt);
