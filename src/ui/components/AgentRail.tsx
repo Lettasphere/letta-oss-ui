@@ -133,7 +133,6 @@ export function AgentRail() {
                 src={artFor(agent.id)}
                 alt={agent.name}
                 decoding="async"
-                style={{ imageRendering: "crisp-edges" }}
                 className={`h-11 w-11 rounded-full object-cover transition-transform ${selected ? "ring-2 ring-accent ring-offset-2 ring-offset-sidebar" : "opacity-80 hover:opacity-100"}`}
               />
             ) : (
