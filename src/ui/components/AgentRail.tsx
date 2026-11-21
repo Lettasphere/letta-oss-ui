@@ -147,10 +147,18 @@ export function AgentRail() {
   // aren't loaded).
   const conversations = useAppStore((state) => state.conversations);
 
+  const activeConvId = useAppStore((state) => state.activeId);
+
   const unreadFor = (id: string): boolean => {
     if (id === agentId) {
+      // Same exemption as the sidebar: the OPEN conversation is read by
+      // definition. Turn streaming bumps its updatedAt continuously; the
+      // cursor only lands at turn end — without the exemption the rail
+      // flags the agent unread WHILE you watch it work.
       return conversations.some(
-        (c) => Math.max(readCursors[c.id] ?? 0, agentReadFloors[id] ?? 0) < c.updatedAt,
+        (c) =>
+          c.id !== activeConvId &&
+          Math.max(readCursors[c.id] ?? 0, agentReadFloors[id] ?? 0) < c.updatedAt,
       );
     }
     const s = railStatus[id];
