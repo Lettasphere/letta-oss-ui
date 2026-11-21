@@ -241,6 +241,8 @@ export type AppRequests = {
   listComputers(): ComputerSummary[];
   getConversationEnv(conversationId: string): ConversationEnv;
   getAllConversationEnvs(): Record<string, ComputerSelectorField | null>;
+  getAgentLayout(): { order: string[]; pinned: string[] };
+  setAgentLayout(input: { order: string[]; pinned: string[] }): { order: string[]; pinned: string[] };
   setConversationEnv(input: {
     conversationId: string;
     /** null = cloud sandbox; undefined = inherit the mode default. */

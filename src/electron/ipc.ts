@@ -106,6 +106,11 @@ const handlers: Handlers = {
   getConversationEnv,
   getAllConversationEnvs,
   setConversationEnv: (input) => setConversationEnv(input.conversationId, input.selector),
+  getAgentLayout: () => ({ order: load().agentOrder ?? [], pinned: load().pinnedAgents ?? [] }),
+  setAgentLayout: (input) => {
+    save({ ...load(), agentOrder: input.order, pinnedAgents: input.pinned });
+    return { order: input.order, pinned: input.pinned };
+  },
   getExecutionMode: () => load().executionMode ?? "local",
   getRemoteEnvName: () => load().remoteEnvName ?? "",
   listRemoteDirectory: (input) => listRemoteDirectory(input.selector, input.path),

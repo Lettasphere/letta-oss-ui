@@ -6,6 +6,8 @@ const METHODS = [
   "listComputers",
   "getConversationEnv",
   "getAllConversationEnvs",
+  "getAgentLayout",
+  "setAgentLayout",
   "setConversationEnv",
   "getExecutionMode",
   "getRemoteEnvName",

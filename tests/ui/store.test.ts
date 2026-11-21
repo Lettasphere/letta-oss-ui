@@ -108,6 +108,8 @@ function createBridge() {
     deleteSchedule: vi.fn().mockResolvedValue(undefined),
     triggerSchedule: vi.fn().mockResolvedValue(undefined),
     getAllConversationEnvs: vi.fn().mockResolvedValue({}),
+    getAgentLayout: vi.fn().mockResolvedValue({ order: [], pinned: [] }),
+    setAgentLayout: vi.fn().mockResolvedValue({ order: [], pinned: [] }),
   } satisfies Record<keyof AppBridge, unknown>;
 }
 

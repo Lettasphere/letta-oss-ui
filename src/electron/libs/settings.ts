@@ -24,6 +24,10 @@ export type StoredSettings = {
   recentCwds?: string[];
   /** Pinned conversation ids — sorted to the top of the sidebar. */
   pinnedConversations?: string[];
+  /** Rail order for agents (ids); agents missing from the list append in API order. */
+  agentOrder?: string[];
+  /** Agents pinned to the top of the rail. */
+  pinnedAgents?: string[];
   /** conversationId -> last-seen updatedAt (ms). Rows newer than this = unread. */
   readCursors?: Record<string, number>;
   /** OS notifications for approvals/completions (default on). */
