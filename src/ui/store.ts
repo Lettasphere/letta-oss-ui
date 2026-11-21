@@ -411,13 +411,17 @@ export const useAppStore = create<AppState>((set, get) => ({
         break;
       case "conversation.updated": {
         // An update to the OPEN conversation is seen the moment it renders.
-        if (get().activeId === event.conversation.id) {
-          get().advanceReadState(event.conversation.id, Date.now());
-        }
         if (event.conversation.agentId !== get().agentId) break;
         set((state) => ({
           conversations: upsertConversation(state.conversations, event.conversation),
         }));
+        // AFTER the upsert: the open conversation is seen. Mark with the
+        // event's own updatedAt (mapped by toConversationSummary semantics)
+        // +1ms so the cursor always beats the row regardless of clock skew.
+        if (get().activeId === event.conversation.id) {
+          const row = get().conversations.find((c) => c.id === event.conversation.id);
+          get().advanceReadState(event.conversation.id, (row?.updatedAt ?? Date.now()) + 1);
+        }
         break;
       }
       case "menu":

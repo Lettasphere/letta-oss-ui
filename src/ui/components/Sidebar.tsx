@@ -260,6 +260,7 @@ export function Sidebar() {
   const rawConversations = useAppStore((state) => state.conversations);
   const pinnedConversations = useAppStore((state) => state.pinnedConversations);
   const readCursors = useAppStore((state) => state.readCursors);
+  const activeId = useAppStore((state) => state.activeId);
   const markAllRead = useAppStore((state) => state.markAllRead);
   const togglePinnedConversation = useAppStore((state) => state.togglePinnedConversation);
   const conversations = [...rawConversations].sort((a, b) => {
@@ -373,7 +374,10 @@ export function Sidebar() {
               conversation={conversation}
               now={now}
               pinned={pinnedConversations.includes(conversation.id)}
-              unread={(readCursors[conversation.id] ?? 0) < conversation.updatedAt}
+              unread={
+                conversation.id !== activeId &&
+                (readCursors[conversation.id] ?? 0) < conversation.updatedAt
+              }
               onTogglePin={(item) => togglePinnedConversation(item.id)}
               onRename={setRenaming}
               onResume={setResuming}
