@@ -51,6 +51,9 @@ type PendingApproval = {
 
 type Turn = {
   conversationId: string;
+  /** Owning agent — approval/turn events carry it so cross-agent signal
+   *  resolution never depends on the renderer's index freshness. */
+  agentId: string;
   session: LettaCodeSession;
   accumulator: TranscriptAccumulator;
   /** Last version of each row sent to the renderer, for identity diffing. */
@@ -697,6 +700,7 @@ export async function sendMessage(input: SendMessageInput): Promise<Conversation
 
   const turn: Turn = {
     conversationId: conversation.id,
+    agentId: conversation.agentId,
     accumulator: createTranscriptAccumulator(),
     sent: new Map(),
     approvals: new Map(),
@@ -728,12 +732,17 @@ export async function sendMessage(input: SendMessageInput): Promise<Conversation
           turn.approvals.set(request.requestId, { request, resolve });
           // Make sure the tool call is on screen before asking about it.
           flushRows(turn);
-          emit({ type: "approval.requested", conversationId: turn.conversationId, request });
+          emit({
+            type: "approval.requested",
+            conversationId: turn.conversationId,
+            agentId: turn.agentId,
+            request,
+          });
         }),
     }),
   };
   turns.set(conversation.id, turn);
-  emit({ type: "turn.started", conversationId: conversation.id });
+  emit({ type: "turn.started", conversationId: conversation.id, agentId: turn.agentId });
   void runTurn(turn, text, input.otid, input.attachments ?? []);
 
   return conversation;

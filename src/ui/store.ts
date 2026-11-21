@@ -371,6 +371,15 @@ export const useAppStore = create<AppState>((set, get) => ({
             activity: "Starting",
           })),
           runningConversations: new Set(state.runningConversations).add(event.conversationId),
+          // Source-truth index seeding: the turn knows its agent.
+          ...(event.agentId
+            ? {
+                conversationAgentIndex: {
+                  ...state.conversationAgentIndex,
+                  [event.conversationId]: event.agentId,
+                },
+              }
+            : {}),
         }));
         break;
         break;
@@ -420,13 +429,14 @@ export const useAppStore = create<AppState>((set, get) => ({
               event.request,
             ],
           })),
-          // Waiting on a human decision IS unread-worthy — bump freshness
-          // (resolve the agent via the conversation index).
-          ...(state.conversationAgentIndex[event.conversationId]
+          // Waiting on a human decision IS unread-worthy. event.agentId is
+          // the SOURCE truth (threaded at the turn); index is fallback for
+          // older event shapes only.
+          ...((event.agentId ?? state.conversationAgentIndex[event.conversationId])
             ? {
                 agentActivity: {
                   ...state.agentActivity,
-                  [state.conversationAgentIndex[event.conversationId]]: Date.now(),
+                  [event.agentId ?? state.conversationAgentIndex[event.conversationId]!]: Date.now(),
                 },
               }
             : {}),

@@ -225,12 +225,12 @@ export type AppEvent =
   | { type: "remote_handover"; handover: import("./libs/remote-env.js").HandoverState }
   | { type: "remote_auth"; auth: import("./libs/remote-env.js").RemoteAuthState }
   | { type: "connection"; state: ConnectionState }
-  | { type: "turn.started"; conversationId: string }
+  | { type: "turn.started"; conversationId: string; agentId?: string }
   | { type: "turn.rows"; conversationId: string; rows: ChatRow[] }
   | { type: "turn.rows.removed"; conversationId: string; keys: string[] }
   | { type: "turn.activity"; conversationId: string; activity: string | null }
   | { type: "turn.finished"; conversationId: string; error?: string }
-  | { type: "approval.requested"; conversationId: string; request: ApprovalRequest }
+  | { type: "approval.requested"; conversationId: string; agentId?: string; request: ApprovalRequest }
   | { type: "approval.resolved"; conversationId: string; requestId: string }
   | { type: "conversation.updated"; conversation: ConversationSummary }
   | { type: "menu"; command: "new-chat" | "settings" };

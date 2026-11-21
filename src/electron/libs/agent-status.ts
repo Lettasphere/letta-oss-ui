@@ -15,17 +15,24 @@ export interface AgentRailStatus {
 }
 
 let client: LettaAgentClient | null = null;
+let clientKey: string | null = null;
 
-function sdk(): LettaAgentClient {
-  client ??= new LettaAgentClient({
-    backend: "cloud",
-    ...(getConnectionConfig().apiKey ? { apiKey: getConnectionConfig().apiKey } : {}),
-  });
+function sdk(): LettaAgentClient | null {
+  const config = getConnectionConfig();
+  // No cloud key → no poll. In local mode an unauthenticated cloud client
+  // fires N doomed 401s per poll cycle, forever (Uncia gate 1).
+  if (!config.apiKey) return null;
+  // Credential rotation invalidates: rebuild when the key changes.
+  if (!client || clientKey !== config.apiKey) {
+    client = new LettaAgentClient({ backend: "cloud", apiKey: config.apiKey });
+    clientKey = config.apiKey;
+  }
   return client;
 }
 
 export async function agentRailStatus(agentId: string): Promise<AgentRailStatus> {
   const c = sdk();
+  if (!c) throw new Error("No cloud API key — rail status unavailable.");
   const page = await c.conversations.list({ agentId, limit: 5 });
   let latest: { at: string | null; id: string | null } = { at: null, id: null };
   for (const c of page as Array<{ id: string; last_message_at?: string | null; updated_at?: string | null }>) {
