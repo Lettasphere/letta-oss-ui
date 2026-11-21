@@ -6,6 +6,24 @@
  */
 import { useAppStore } from "../store";
 
+/** Bundled canonical agent art, keyed by agent id prefix — falls back to
+ *  the initial+color circle for agents without generated identity art. */
+const AGENT_ART: Record<string, string> = {
+  "agent-b499137a": new URL("../assets/agents/agent-b499137a.png", import.meta.url).toString(),
+  "agent-a237fa13": new URL("../assets/agents/agent-a237fa13.png", import.meta.url).toString(),
+  "agent-edc25b5d": new URL("../assets/agents/agent-edc25b5d.png", import.meta.url).toString(),
+  "agent-8e405fb7": new URL("../assets/agents/agent-8e405fb7.png", import.meta.url).toString(),
+  "agent-5b2254e8": new URL("../assets/agents/agent-5b2254e8.png", import.meta.url).toString(),
+  "agent-e6f1a549": new URL("../assets/agents/agent-e6f1a549.png", import.meta.url).toString(),
+};
+
+function artFor(agentId: string): string | undefined {
+  for (const [prefix, url] of Object.entries(AGENT_ART)) {
+    if (agentId.startsWith(prefix)) return url;
+  }
+  return undefined;
+}
+
 /** Deterministic color per agent name — stable across sessions, no storage. */
 function colorFor(name: string): string {
   let hash = 0;
@@ -49,12 +67,20 @@ export function AgentRail() {
             aria-pressed={selected}
             className="group relative rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            <span
-              className={`flex h-11 w-11 items-center justify-center rounded-full text-sm font-semibold text-white transition-transform ${selected ? "ring-2 ring-accent ring-offset-2 ring-offset-sidebar" : "opacity-80 hover:opacity-100"}`}
-              style={{ backgroundColor: colorFor(agent.name) }}
-            >
-              {initial(agent.name)}
-            </span>
+            {artFor(agent.id) ? (
+              <img
+                src={artFor(agent.id)}
+                alt={agent.name}
+                className={`h-11 w-11 rounded-full object-cover transition-transform ${selected ? "ring-2 ring-accent ring-offset-2 ring-offset-sidebar" : "opacity-80 hover:opacity-100"}`}
+              />
+            ) : (
+              <span
+                className={`flex h-11 w-11 items-center justify-center rounded-full text-sm font-semibold text-white transition-transform ${selected ? "ring-2 ring-accent ring-offset-2 ring-offset-sidebar" : "opacity-80 hover:opacity-100"}`}
+                style={{ backgroundColor: colorFor(agent.name) }}
+              >
+                {initial(agent.name)}
+              </span>
+            )}
             {selected && working && (
               <span
                 className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-sidebar bg-accent animate-pulse"
