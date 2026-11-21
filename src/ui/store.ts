@@ -413,14 +413,24 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (get().view === "memory") void get().loadMemory();
         break;
       case "approval.requested":
-        set((state) =>
-          patchChat(state, event.conversationId, (chat) => ({
+        set((state) => ({
+          ...patchChat(state, event.conversationId, (chat) => ({
             approvals: [
               ...chat.approvals.filter((item) => item.requestId !== event.request.requestId),
               event.request,
             ],
           })),
-        );
+          // Waiting on a human decision IS unread-worthy — bump freshness
+          // (resolve the agent via the conversation index).
+          ...(state.conversationAgentIndex[event.conversationId]
+            ? {
+                agentActivity: {
+                  ...state.agentActivity,
+                  [state.conversationAgentIndex[event.conversationId]]: Date.now(),
+                },
+              }
+            : {}),
+        }));
         break;
       case "approval.resolved":
         set((state) =>

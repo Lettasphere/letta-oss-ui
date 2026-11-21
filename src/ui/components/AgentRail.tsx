@@ -165,6 +165,10 @@ export function AgentRail() {
     // Unselected agents: LIVE event-driven freshness first — any
     // conversation.updated for this agent bumped agentActivity. The 30s
     // poll is the cron-only backstop (fires that emit no events).
+    // RUNNING conversations don't count as unread: tool output streaming
+    // is work-in-progress, not a response waiting to be read (Harry:
+    // "unread only when the agent finished or awaits a human decision").
+    if (workingAgents.has(id)) return false;
     const floor = agentReadFloors[id] ?? 0;
     const liveAt = agentActivity[id];
     if (liveAt !== undefined) return liveAt > floor;
