@@ -1,7 +1,8 @@
 /**
  * Schedules (cron) via the app-server protocol: list/pause/resume/delete/trigger.
- * Runs live only in remote-env mode (the app-server must be up); local mode
- * has no app-server to ask — the panel shows a hint instead.
+ * Schedules speak the app-server control protocol (control.ts): any mode
+ * with an app-server — local AND remote-env — works. Cloud-only mode has
+ * no app-server; the panel surfaces that error honestly.
  */
 import { request } from "./control.js";
 
@@ -16,7 +17,8 @@ export interface CronTask {
   scheduled_for?: string | null;
   conversation_id?: string;
   agent_id?: string;
-  paused?: boolean;
+  /** "active" | "paused" — the wire uses status, not a paused boolean. */
+  status?: string;
 }
 
 export async function listSchedules(agentId: string): Promise<CronTask[]> {

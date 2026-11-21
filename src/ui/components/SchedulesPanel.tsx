@@ -1,7 +1,7 @@
 /**
- * Schedules panel — the agent's cron tasks via the app-server protocol
- * (listSchedules/pause/resume/delete/trigger; runs live only in remote-env
- * mode where the app-server is up). Local mode shows a hint instead.
+ * Schedules panel — the agent's cron tasks via the app-server control
+ * protocol. Works in local AND remote-env modes (any mode with an
+ * app-server); cloud-only surfaces the error honestly.
  */
 import { useCallback, useEffect, useState } from "react";
 
@@ -33,7 +33,11 @@ export function SchedulesPanel() {
     setError(null);
     try {
       const agentId = useAppStore.getState().agentId;
-      if (!agentId) return;
+      // No agent selected: empty list immediately — never hang on Loading.
+      if (!agentId) {
+        setTasks([]);
+        return;
+      }
       setTasks(await window.bridge.listSchedules({ agentId }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't load schedules.");
@@ -107,7 +111,7 @@ export function SchedulesPanel() {
             >
               Run
             </button>
-            {task.paused ? (
+            {task.status === "paused" ? (
               <button
                 type="button"
                 disabled={busy !== null}
