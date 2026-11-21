@@ -122,10 +122,15 @@ export function AgentRail() {
     };
   }, [agents]);
 
+  const agentReadFloors = useAppStore((state) => state.agentReadFloors);
+
   const unreadFor = (id: string): boolean => {
     const s = railStatus[id];
     if (!s?.latestAt || !s.latestConversationId) return false;
-    const cursor = readCursors[s.latestConversationId] ?? 0;
+    const cursor = Math.max(
+      readCursors[s.latestConversationId] ?? 0,
+      agentReadFloors[id] ?? 0,
+    );
     return new Date(s.latestAt).getTime() > cursor;
   };
 

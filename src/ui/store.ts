@@ -117,6 +117,9 @@ type AppState = {
   pinnedConversations: string[];
   /** conversationId -> last-seen updatedAt; newer rows render unread. */
   readCursors: Record<string, number>;
+  /** Per-agent read floor (ms) — when the agent's visible list has no
+   *  unread rows, the floor advances: rail unread uses max(cursor, floor). */
+  agentReadFloors: Record<string, number>;
   /** Handover lifecycle: disconnect detected → switching → stable. */
   remoteHandover: { phase: "stable" } | { phase: "switching"; since: number; reason: string };
   /** Live adoption state (owned vs adopted registration) — event-driven. */
@@ -255,6 +258,7 @@ const CLEARED = {
   remoteHandover: { phase: "stable" },
   pinnedConversations: [],
   readCursors: {},
+  agentReadFloors: {},
   remoteAdoption: { kind: "none" },
   remoteAuth: { status: "idle" },
   providers: null,
@@ -486,6 +490,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       .then((settings) => set({ settings }))
       .catch(() => undefined);
     try {
+      const t0 = Date.now();
       // Restore the agent's last-open conversation (not a forced new chat).
       try {
         const stored = (await api.getSettings()).lastConversationByAgent?.[agentId];
@@ -496,14 +501,33 @@ export const useAppStore = create<AppState>((set, get) => ({
       // Progressive: first 25 paint immediately (cheap filter, no probes);
       // the full verified list replaces it when ready.
       const first = await api.listConversationsFirstPage(agentId);
+      console.log(`[timing] first page: ${Date.now() - t0}ms, ${first.length} rows`);
       if (get().agentId === agentId && get().conversations.length === 0) {
         // First paint IS a loaded state — clear the loading flag here; the
         // full verified list silently replaces the content later.
         set({ conversations: first, conversationsLoading: false, conversationsLoaded: true });
       }
       const conversations = await api.listConversations(agentId);
-      if (get().agentId === agentId)
-        set({ conversations, conversationsLoading: false, conversationsLoaded: true });
+      console.log(`[timing] full load: ${Date.now() - t0}ms, ${conversations.length} rows`);
+      if (get().agentId === agentId) {
+        const cursors = get().readCursors;
+        const anyUnread = conversations.some(
+          (c) => (cursors[c.id] ?? 0) < c.updatedAt,
+        );
+        if (!anyUnread) {
+          set((state) => ({
+            conversations,
+            conversationsLoading: false,
+            conversationsLoaded: true,
+            agentReadFloors: {
+              ...state.agentReadFloors,
+              [agentId]: Date.now(),
+            },
+          }));
+        } else {
+          set({ conversations, conversationsLoading: false, conversationsLoaded: true });
+        }
+      }
     } catch (error) {
       if (get().agentId === agentId) {
         set({ conversationsLoading: false, conversationsLoaded: true, notice: errorMessage(error) });
@@ -836,7 +860,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   markAllRead: () => {
-    const items = get().conversations.map((c) => ({ conversationId: c.id, updatedAt: c.updatedAt }));
+    const agentId = get().agentId;
+    const items = get().conversations.map((c) => ({ conversationId: c.id, updatedAt: Date.now() }));
+    if (items.length === 0 && !agentId) return;
+    // Floor the agent regardless — mark-all means ALL read, including
+    // conversations the list can't see.
+    set((state) => ({
+      agentReadFloors: agentId
+        ? { ...state.agentReadFloors, [agentId]: Date.now() }
+        : state.agentReadFloors,
+    }));
     if (items.length === 0) return;
     void window.bridge
       .markAllConversationsRead({ items })
