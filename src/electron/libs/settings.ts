@@ -39,6 +39,8 @@ export type StoredSettings = {
   /** Remembered folder per execution target ("sandbox" or deviceId). */
   targetFolders?: Record<string, string>;
   conversationEnvs?: Record<string, import("@letta-ai/letta-agent-sdk").ComputerSelector | null>;
+  /** Agent id -> last-open conversation id (switch-restore). */
+  lastConversationByAgent?: Record<string, string>;
   executionMode?: "local" | "remote-env" | "cloud-only";
   /** Custom registration name for the app-spawned letta remote (default: hostname). */
   remoteEnvName?: string;
@@ -222,6 +224,7 @@ export function getSettings(): AppSettings {
     hasServerToken: config.serverToken.length > 0,
     permissionMode: stored.permissionMode ?? "standard",
     agentId: stored.agentIds?.[config.backend] ?? null,
+    lastConversationByAgent: stored.lastConversationByAgent ?? {},
     recentCwds: stored.recentCwds ?? [],
     defaultCwd: homedir(),
   };
@@ -243,6 +246,12 @@ export function updateSettings(update: SettingsUpdate): { connectionChanged: boo
   }
   if (update.permissionMode && PERMISSION_MODES.includes(update.permissionMode)) {
     next.permissionMode = update.permissionMode;
+  }
+  if ((update as { lastConversationByAgent?: Record<string, string> }).lastConversationByAgent) {
+    next.lastConversationByAgent = {
+      ...next.lastConversationByAgent,
+      ...(update as { lastConversationByAgent: Record<string, string> }).lastConversationByAgent,
+    };
   }
   save(next);
 

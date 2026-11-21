@@ -25,6 +25,8 @@ export type AppSettings = {
   permissionMode: PermissionMode;
   /** Agent selected for the current backend. */
   agentId: string | null;
+  /** Agent id -> last-open conversation id. */
+  lastConversationByAgent: Record<string, string>;
   recentCwds: string[];
   defaultCwd: string;
 };
@@ -38,6 +40,8 @@ export type SettingsUpdate = {
   serverToken?: string | null;
   permissionMode?: PermissionMode;
   agentId?: string | null;
+  /** Merge-in: agent id -> last-open conversation id. */
+  lastConversationByAgent?: Record<string, string>;
 };
 
 import type { ComputerSummary, ComputerSelectorField, ConversationEnv } from "./libs/env.js";

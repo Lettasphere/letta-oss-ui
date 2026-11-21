@@ -486,11 +486,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       .then((settings) => set({ settings }))
       .catch(() => undefined);
     try {
+      // Restore the agent's last-open conversation (not a forced new chat).
+      try {
+        const stored = (await api.getSettings()).lastConversationByAgent?.[agentId];
+        if (stored && get().agentId === agentId) set({ activeId: stored });
+      } catch {
+        /* absent setting — stay on new chat */
+      }
       // Progressive: first 25 paint immediately (cheap filter, no probes);
       // the full verified list replaces it when ready.
       const first = await api.listConversationsFirstPage(agentId);
       if (get().agentId === agentId && get().conversations.length === 0) {
-        set({ conversations: first });
+        // First paint IS a loaded state — clear the loading flag here; the
+        // full verified list silently replaces the content later.
+        set({ conversations: first, conversationsLoading: false, conversationsLoaded: true });
       }
       const conversations = await api.listConversations(agentId);
       if (get().agentId === agentId)
@@ -529,6 +538,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   openChat: (conversationId) => {
+    // Persist the agent's last-open conversation for switch-restore.
+    const currentAgent = get().agentId;
+    if (currentAgent && conversationId) {
+      void api
+        .updateSettings({
+          lastConversationByAgent: { [currentAgent]: conversationId },
+        } as never)
+        .catch(() => undefined);
+    }
     // Opening marks the conversation seen (its current state = read).
     if (conversationId) {
       const updatedAt = get().conversations.find((c) => c.id === conversationId)?.updatedAt;

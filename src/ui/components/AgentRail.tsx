@@ -196,7 +196,8 @@ export function AgentRail() {
             )}
             {unreadFor(agent.id) && (
               <span
-                className="absolute -top-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-sidebar bg-accent"
+                className="absolute -top-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-sidebar"
+                style={{ backgroundColor: "#e0a030" }}
                 title="Unread activity"
               />
             )}

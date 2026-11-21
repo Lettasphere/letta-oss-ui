@@ -17,7 +17,7 @@ const settings: AppSettings = {
   hasApiKey: false,
   hasServerToken: false,
   permissionMode: "standard",
-  agentId: "agent-2",
+  agentId: "agent-2", lastConversationByAgent: {},
   recentCwds: ["/recent"],
   defaultCwd: "/home",
 };
