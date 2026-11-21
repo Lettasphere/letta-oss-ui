@@ -547,10 +547,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         } as never)
         .catch(() => undefined);
     }
-    // Opening marks the conversation seen (its current state = read).
+    // Opening marks the conversation seen. Date.now() (not the list's
+    // possibly-stale updatedAt) so the cursor covers any message that
+    // arrived between the list load and this open — the amber unread dot
+    // must clear on open, not linger until the next poll.
     if (conversationId) {
-      const updatedAt = get().conversations.find((c) => c.id === conversationId)?.updatedAt;
-      if (updatedAt) get().markConversationRead(conversationId, updatedAt);
+      get().markConversationRead(conversationId, Date.now());
     }
     set({ activeId: conversationId, view: "chat" });
     if (!conversationId) return;
