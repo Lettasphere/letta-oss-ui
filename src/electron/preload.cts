@@ -61,6 +61,7 @@ const METHODS = [
   "listMemoryHistory",
   "readMemoryFileAt",
   "listConversations",
+  "listConversationsFirstPage",
   "loadHistory",
   "renameConversation",
   "archiveConversation",

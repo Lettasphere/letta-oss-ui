@@ -486,8 +486,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       .then((settings) => set({ settings }))
       .catch(() => undefined);
     try {
+      // Progressive: first 25 paint immediately (cheap filter, no probes);
+      // the full verified list replaces it when ready.
+      const first = await api.listConversationsFirstPage(agentId);
+      if (get().agentId === agentId && get().conversations.length === 0) {
+        set({ conversations: first });
+      }
       const conversations = await api.listConversations(agentId);
-      if (get().agentId === agentId) set({ conversations, conversationsLoaded: true });
+      if (get().agentId === agentId)
+        set({ conversations, conversationsLoading: false, conversationsLoaded: true });
     } catch (error) {
       if (get().agentId === agentId) {
         set({ conversationsLoading: false, conversationsLoaded: true, notice: errorMessage(error) });

@@ -315,6 +315,7 @@ export type AppRequests = {
   listMemoryHistory(agentId: string, path: string): MemoryCommit[];
   readMemoryFileAt(agentId: string, path: string, sha: string): string;
   listConversations(agentId: string): ConversationSummary[];
+  listConversationsFirstPage(agentId: string): ConversationSummary[];
   loadHistory(conversationId: string, limit: number): HistoryResult;
   renameConversation(conversationId: string, title: string): ConversationSummary;
   archiveConversation(conversationId: string): void;

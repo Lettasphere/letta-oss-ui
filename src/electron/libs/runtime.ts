@@ -390,6 +390,24 @@ async function enrichDisplayFields(
   }
 }
 
+export async function listConversationsFirstPage(
+  agentId: string,
+  pageSize = 25,
+): Promise<ConversationSummary[]> {
+  // Fast first paint: first page of the list, cheap filter only (archived +
+  // field check), probes deferred to the full load. Rows that later fail
+  // the husk probe get removed when the full list lands.
+  const sdk = await ensureClient();
+  const page = await sdk.conversations.list({ agentId, limit: pageSize });
+  return page
+    .filter(
+      (conversation) =>
+        !conversation.archived && Boolean(conversation.summary || conversation.last_message_at),
+    )
+    .map(toConversationSummary)
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
 export async function listConversations(agentId: string): Promise<ConversationSummary[]> {
   const sdk = await ensureClient();
   // Fetch ALL pages: the agent's conversation count can far exceed one page
