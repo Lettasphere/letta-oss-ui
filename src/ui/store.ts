@@ -500,7 +500,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       // Restore the agent's last-open conversation (not a forced new chat).
       try {
         const stored = (await api.getSettings()).lastConversationByAgent?.[agentId];
-        if (stored && get().agentId === agentId) set({ activeId: stored });
+        if (stored && get().agentId === agentId) {
+          set({ activeId: stored });
+          // Restoring must also DRIVE the load — openChat's loadHistory
+          // doesn't run for a restored id (the transcript spun until a
+          // manual click).
+          const chat = get().chats[stored];
+          if (!chat?.loaded && !chat?.loading) void get().loadHistory(stored);
+        }
       } catch {
         /* absent setting — stay on new chat */
       }
