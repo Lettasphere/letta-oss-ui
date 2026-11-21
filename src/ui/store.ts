@@ -120,6 +120,11 @@ type AppState = {
   /** Per-agent read floor (ms) — when the agent's visible list has no
    *  unread rows, the floor advances: rail unread uses max(cursor, floor). */
   agentReadFloors: Record<string, number>;
+  /** conversationId -> agentId, built from every loaded list + rail polls —
+   *  lets turn events (which lack agentId) resolve cross-agent signals. */
+  conversationAgentIndex: Record<string, string>;
+  /** Conversations with a live turn — cross-agent working signal. */
+  runningConversations: Set<string>;
   /** Handover lifecycle: disconnect detected → switching → stable. */
   remoteHandover: { phase: "stable" } | { phase: "switching"; since: number; reason: string };
   /** Live adoption state (owned vs adopted registration) — event-driven. */
@@ -213,6 +218,7 @@ type AppState = {
   togglePinnedConversation: (conversationId: string) => void;
   markConversationRead: (conversationId: string, updatedAt: number) => void;
   advanceReadState: (conversationId: string, seenAt: number) => void;
+  noteConversationAgent: (conversationId: string, agentId: string) => void;
   markAllRead: () => void;
   pickEnvironment: (selector: ComputerSelectorField | null | undefined) => void;
   /** Set the working folder for the ACTIVE conversation on the ACTIVE
@@ -262,6 +268,8 @@ const CLEARED = {
   pinnedConversations: [],
   readCursors: {},
   agentReadFloors: {},
+  conversationAgentIndex: {},
+  runningConversations: new Set<string>(),
   remoteAdoption: { kind: "none" },
   remoteAuth: { status: "idle" },
   providers: null,
@@ -351,13 +359,15 @@ export const useAppStore = create<AppState>((set, get) => ({
         break;
       }
       case "turn.started":
-        set((state) =>
-          patchChat(state, event.conversationId, () => ({
+        set((state) => ({
+          ...patchChat(state, event.conversationId, () => ({
             running: true,
             error: null,
             activity: "Starting",
           })),
-        );
+          runningConversations: new Set(state.runningConversations).add(event.conversationId),
+        }));
+        break;
         break;
       case "turn.rows":
         set((state) =>
@@ -381,14 +391,19 @@ export const useAppStore = create<AppState>((set, get) => ({
         );
         break;
       case "turn.finished":
-        set((state) =>
-          patchChat(state, event.conversationId, () => ({
-            running: false,
-            activity: null,
-            approvals: [],
-            error: event.error ?? null,
-          })),
-        );
+        set((state) => {
+          const next = new Set(state.runningConversations);
+          next.delete(event.conversationId);
+          return {
+            ...patchChat(state, event.conversationId, () => ({
+              running: false,
+              activity: null,
+              approvals: [],
+              error: event.error ?? null,
+            })),
+            runningConversations: next,
+          };
+        });
         // The agent may have rewritten its memory during the turn.
         if (get().view === "memory") void get().loadMemory();
         break;
@@ -524,6 +539,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({ conversations: first, conversationsLoading: false, conversationsLoaded: true });
       }
       const conversations = await api.listConversations(agentId);
+      // Index conversation->agent for cross-agent turn-event resolution.
+      set((state) => {
+        const idx = { ...state.conversationAgentIndex };
+        for (const c of conversations) idx[c.id] = agentId;
+        return { conversationAgentIndex: idx };
+      });
       if (get().agentId === agentId) {
         const cursors = get().readCursors;
         const anyUnread = conversations.some(
@@ -871,6 +892,13 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   /** THE single write path for read state — keeps cursors, floors, and any
    *  derived unread signals in sync. Every read-marking flows through here. */
+  noteConversationAgent: (conversationId: string, agentId: string) => {
+    if (get().conversationAgentIndex[conversationId] === agentId) return;
+    set((state) => ({
+      conversationAgentIndex: { ...state.conversationAgentIndex, [conversationId]: agentId },
+    }));
+  },
+
   advanceReadState: (conversationId: string, seenAt: number) => {
     const agentId = get().agentId;
     void window.bridge

@@ -110,6 +110,8 @@ export function AgentRail() {
   >({});
   const readCursors = useAppStore((state) => state.readCursors);
 
+  const noteConversationAgent = useAppStore((state) => state.noteConversationAgent);
+
   useEffect(() => {
     let cancelled = false;
     const poll = async () => {
@@ -119,6 +121,9 @@ export function AgentRail() {
           try {
             const s = await window.bridge.agentRailStatus({ agentId: agent.id });
             next[agent.id] = { latestAt: s.latestAt, latestConversationId: s.latestConversationId };
+            // Index the polled conversation -> agent: turn events for it can
+            // now resolve this agent even when its list was never loaded.
+            if (s.latestConversationId) noteConversationAgent(s.latestConversationId, agent.id);
           } catch {
             /* agent unreachable — leave absent = no dot */
           }
@@ -132,7 +137,7 @@ export function AgentRail() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [agents]);
+  }, [agents, noteConversationAgent]);
 
   const agentReadFloors = useAppStore((state) => state.agentReadFloors);
 
@@ -165,11 +170,22 @@ export function AgentRail() {
     return ord !== -1 ? rail.pinned.length + ord : rail.pinned.length + rail.order.length + 999;
   };
   const ordered = [...agents].sort((a, b) => rank(a.id) - rank(b.id));
-  // Working signal: the active agent's active conversation is running a turn.
+  // Cross-agent working: any live turn, resolved to its agent via the
+  // conversation->agent index. Shows on EVERY agent's avatar (selected or
+  // not) — a running agent is running wherever you're looking.
+  const runningConversations = useAppStore((state) => state.runningConversations);
+  const conversationAgentIndex = useAppStore((state) => state.conversationAgentIndex);
+  const workingAgents = new Set<string>();
+  for (const convId of runningConversations) {
+    const owner = conversationAgentIndex[convId];
+    if (owner) workingAgents.add(owner);
+  }
+  // Belt: the selected agent's own chat state also counts (index may lag).
   const working = useAppStore((state) => {
     if (!state.agentId || !state.activeId) return false;
     return Boolean(state.chats[state.activeId]?.running);
   });
+  if (working && agentId) workingAgents.add(agentId);
 
   if (agents.length === 0) return null;
 
@@ -229,7 +245,7 @@ export function AgentRail() {
                 title="Unread activity"
               />
             )}
-            {selected && working && (
+            {workingAgents.has(agent.id) && (
               <span
                 className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-sidebar bg-accent animate-pulse"
                 title="Working"
