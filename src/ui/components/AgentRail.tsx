@@ -14,12 +14,20 @@ interface RailLayout {
   pinned: string[];
 }
 
-function useRailLayout(): RailLayout & {
+function useRailLayout(agentIds: string[]): RailLayout & {
   togglePin: (id: string) => void;
   moveUp: (id: string) => void;
   moveDown: (id: string) => void;
 } {
   const [layout, setLayout] = useState<RailLayout>({ order: [], pinned: [] });
+  // Hydrate the persisted order/pins on mount — without this every session
+  // starts empty (moves were no-ops on an unpopulated list).
+  useEffect(() => {
+    void window.bridge
+      .getAgentLayout()
+      .then((saved) => setLayout({ order: saved.order ?? [], pinned: saved.pinned ?? [] }))
+      .catch(() => undefined);
+  }, []);
   const persist = (next: RailLayout) => {
     setLayout(next);
     void window.bridge.setAgentLayout(next);
@@ -34,7 +42,10 @@ function useRailLayout(): RailLayout & {
           : [...layout.pinned, id],
       }),
     moveUp: (id) => {
-      const list = [...layout.order];
+      // Seed: if the id isn't in the saved order yet (fresh agent / never
+      // moved), materialize the CURRENT display order first, then swap.
+      let list = [...layout.order];
+      if (!list.includes(id)) list = [...agentIds];
       const idx = list.indexOf(id);
       if (idx > 0) {
         list.splice(idx - 1, 0, list.splice(idx, 1)[0]!);
@@ -42,7 +53,8 @@ function useRailLayout(): RailLayout & {
       }
     },
     moveDown: (id) => {
-      const list = [...layout.order];
+      let list = [...layout.order];
+      if (!list.includes(id)) list = [...agentIds];
       const idx = list.indexOf(id);
       if (idx >= 0 && idx < list.length - 1) {
         list.splice(idx + 1, 0, list.splice(idx, 1)[0]!);
@@ -88,7 +100,7 @@ export function AgentRail() {
   const agents = useAppStore((state) => state.agents);
   const agentId = useAppStore((state) => state.agentId);
   const selectAgent = useAppStore((state) => state.selectAgent);
-  const rail = useRailLayout();
+  const rail = useRailLayout(agents.map((a) => a.id));
   const [menuFor, setMenuFor] = useState<string | null>(null);
   // Cross-agent unread: poll each agent's latest conversation activity and
   // compare against the read cursors (persisted per conversation). An agent

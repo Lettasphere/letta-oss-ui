@@ -403,7 +403,7 @@ export async function listConversationsFirstPage(
   const titled = page.filter(
     (conversation) =>
       !conversation.archived &&
-      Boolean(conversation.summary || conversation.last_message_at || conversation.name),
+      Boolean(conversation.summary || conversation.last_message_at || (conversation as { name?: string | null }).name),
   );
   // Probe up to 2x pageSize candidates concurrently (10-wide) — enough
   // survive husks to fill the page.

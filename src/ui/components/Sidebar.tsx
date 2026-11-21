@@ -269,6 +269,7 @@ export function Sidebar() {
   });
   const conversationsLoaded = useAppStore((state) => state.conversationsLoaded);
   const conversationsLoading = useAppStore((state) => state.conversationsLoading);
+  const conversationsRefreshing = useAppStore((state) => state.conversationsRefreshing);
   const agentId = useAppStore((state) => state.agentId);
   const connection = useAppStore((state) => state.connection);
   const openChat = useAppStore((state) => state.openChat);
@@ -358,6 +359,9 @@ export function Sidebar() {
         )}
         {agentId && conversationsLoading && (
           <p className="px-2.5 py-3 text-xs text-muted">Loading chats…</p>
+        )}
+        {agentId && conversationsRefreshing && conversations.length > 0 && (
+          <p className="px-2.5 py-1.5 text-xs text-muted">Loading remaining chats…</p>
         )}
         {agentId && !conversationsLoading && conversationsLoaded && conversations.length === 0 && !query.trim() && (
           <p className="px-2.5 py-3 text-xs text-muted">No chats yet.</p>

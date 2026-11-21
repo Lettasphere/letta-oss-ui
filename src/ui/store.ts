@@ -143,6 +143,8 @@ type AppState = {
   memory: MemoryState | null;
   conversations: ConversationSummary[];
   conversationsLoading: boolean;
+  /** True from first paint until the FULL verified list lands. */
+  conversationsRefreshing: boolean;
   conversationsLoaded: boolean;
   /** null is the new, unsent chat. */
   activeId: string | null;
@@ -267,6 +269,7 @@ const CLEARED = {
   memory: null,
   conversations: [],
   conversationsLoading: false,
+  conversationsRefreshing: false,
   conversationsLoaded: false,
   activeId: null,
   chats: {},
@@ -445,7 +448,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({
           agentId: null,
           conversations: [],
-          conversationsLoading: false, conversationsLoaded: true,
+          conversationsLoading: false,
+  conversationsRefreshing: false, conversationsLoaded: true,
           activeId: null,
           view: "chat",
           memory: null,
@@ -480,6 +484,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({
       agentId,
       conversationsLoading: true,
+      conversationsRefreshing: true,
       conversations: [],
       conversationsLoaded: false,
       activeId: null,
@@ -517,6 +522,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           set((state) => ({
             conversations,
             conversationsLoading: false,
+  conversationsRefreshing: false,
             conversationsLoaded: true,
             agentReadFloors: {
               ...state.agentReadFloors,
@@ -524,12 +530,12 @@ export const useAppStore = create<AppState>((set, get) => ({
             },
           }));
         } else {
-          set({ conversations, conversationsLoading: false, conversationsLoaded: true });
+          set({ conversations, conversationsLoading: false, conversationsLoaded: true, conversationsRefreshing: false });
         }
       }
     } catch (error) {
       if (get().agentId === agentId) {
-        set({ conversationsLoading: false, conversationsLoaded: true, notice: errorMessage(error) });
+        set({ conversationsLoading: false, conversationsRefreshing: false, conversationsLoaded: true, notice: errorMessage(error) });
       }
     }
   },
