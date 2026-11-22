@@ -276,6 +276,81 @@ const EFFORT_TIERS: Array<{
   { effort: "max", label: "Max", detail: "Maximum reasoning — slowest" },
 ];
 
+
+/** Grey bar above the prompt input: N monitors on this conversation;
+ *  click expands to descriptions. Polls 15s while visible. */
+function MonitorBar() {
+  const activeId = useAppStore((state) => state.activeId);
+  const [monitors, setMonitors] = useState<
+    Array<{ id: string; description: string | null; status: string | null; kind: string | null }>
+  >([]);
+  const [expanded, setExpanded] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (!activeId) {
+      setMonitors([]);
+      return;
+    }
+    let cancelled = false;
+    const poll = () => {
+      window.bridge
+        .listMonitors({ conversationId: activeId })
+        .then((rows) => {
+          if (!cancelled) {
+            setMonitors(rows);
+            setFailed(false);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setFailed(true);
+        });
+    };
+    poll();
+    const timer = setInterval(poll, 15_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [activeId]);
+
+  if (!activeId || (monitors.length === 0 && !failed)) return null;
+
+  return (
+    <div className="mx-2 mb-1.5 rounded-lg border border-border bg-surface-tertiary px-3 py-1.5 text-xs text-muted">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center gap-1.5 text-left"
+      >
+        <span className="font-medium">{monitors.length} monitor{monitors.length === 1 ? "" : "s"}</span>
+        <span className="text-muted-light">
+          {monitors.filter((m) => m.status === "running").length} running
+        </span>
+        <span className="ml-auto text-muted-light">{expanded ? "Hide" : "Show"}</span>
+      </button>
+      {expanded && (
+        <ul className="mt-1.5 space-y-1 border-t border-border pt-1.5">
+          {monitors.map((m) => (
+            <li key={m.id} className="flex items-baseline gap-2">
+              <span
+                className={
+                  m.status === "running" ? "text-accent" : m.status === "failed" ? "text-error" : "text-muted"
+                }
+              >
+                {m.status ?? "unknown"}
+              </span>
+              <span className="min-w-0 flex-1 truncate" title={m.description ?? ""}>
+                {m.description ?? m.id}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function EffortMenu() {
   // The model's catalog default effort, when published — surfaces what Auto
   // means for THIS model (e.g. glm: Auto IS max reasoning).
@@ -443,6 +518,7 @@ export function Composer({ disabled }: { disabled: boolean }) {
             ))}
           </div>
         )}
+        <MonitorBar />
                 <textarea
           ref={inputRef}
           rows={1}

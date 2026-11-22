@@ -246,6 +246,7 @@ export type AppRequests = {
   getConversationEnv(conversationId: string): ConversationEnv;
   getAllConversationEnvs(): Record<string, ComputerSelectorField | null>;
   getAgentLayout(): { order: string[]; pinned: string[] };
+  listMonitors(input: { conversationId: string }): Array<{ id: string; description: string | null; status: string | null; kind: string | null }>;
   agentRailStatus(input: { agentId: string }): Promise<{ agentId: string; latestAt: string | null; latestConversationId: string | null }>;
   setAgentLayout(input: { order: string[]; pinned: string[] }): { order: string[]; pinned: string[] };
   setConversationEnv(input: {
