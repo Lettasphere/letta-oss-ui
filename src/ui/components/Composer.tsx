@@ -102,7 +102,7 @@ function FolderMenu({ cwd }: { cwd: string }) {
               setTargetFolder(def);
             })
             .catch((error) => {
-              console.warn("[chip] discovery failed:", String(error).slice(0, 200));
+              console.warn("[chip] discovery failed:", String(error).slice(0, 200), error instanceof Error ? error.stack?.slice(0, 400) : "");
               setTargetFolder(null);
             });
         })
@@ -154,7 +154,7 @@ function FolderMenu({ cwd }: { cwd: string }) {
       }
     });
     } catch (fatal) {
-      console.warn("[chip] discovery chain crashed:", String(fatal).slice(0, 200));
+      console.warn("[chip] discovery chain crashed:", String(fatal).slice(0, 200), fatal instanceof Error ? fatal.stack?.slice(0, 400) : "");
       setFolderResolving(false);
     }
     return () => {
