@@ -67,9 +67,12 @@ function FolderMenu({ cwd }: { cwd: string }) {
     const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000));
     const resolvedRef = { done: false };
     try {
+    // The FIRST bridge call is guarded too: every layer of this chain has
+    // produced 'reading catch' at one time or another — nothing gets to
+    // throw uncaught, and nothing gets to be undefined-then-chained.
+    const rememberedP = window.bridge.getTargetFolder({ targetKey });
     void Promise.race([
-      window.bridge
-        .getTargetFolder({ targetKey })
+      Promise.resolve(rememberedP)
         .then((remembered) => {
           if (remembered) {
             resolvedRef.done = true;
