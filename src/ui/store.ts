@@ -888,7 +888,6 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   openSchedules: () => {
     set({ view: "schedules" });
-    void get().loadMemory();
   },
 
   loadMemory: async () => {
