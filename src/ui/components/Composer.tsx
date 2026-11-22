@@ -102,12 +102,12 @@ function FolderMenu({ cwd }: { cwd: string }) {
               setTargetFolder(def);
             })
             .catch((error) => {
-              console.warn("[chip:PRIMARY]", String(error).slice(0, 150));
+              console.warn("[chip] discovery failed:", String(error).slice(0, 200));
               setTargetFolder(null);
             });
         })
         .catch((error) => {
-          console.warn("[chip:CHAIN]", String(error).slice(0, 150));
+          console.warn("[chip] folder-chain failed:", String(error).slice(0, 200));
           setTargetFolder(null);
         }),
       timeout,
@@ -141,12 +141,11 @@ function FolderMenu({ cwd }: { cwd: string }) {
                       setTargetFolder(def);
                     } else retry();
                   })
-                  .catch((e) => { console.warn("[chip:RETRY]", String(e).slice(0, 100)); retry(); });
+                  .catch(() => retry());
               } else {
                 retry();
               }
-            } catch (e) {
-              console.warn("[chip:RETRY-SYNC]", String(e).slice(0, 100));
+            } catch {
               retry();
             }
           }, Math.min(2000 * 2 ** (attempt - 1), 16000));
@@ -155,7 +154,7 @@ function FolderMenu({ cwd }: { cwd: string }) {
       }
     });
     } catch (fatal) {
-      console.warn("[chip:FATAL]", String(fatal).slice(0, 150));
+      console.warn("[chip] discovery chain crashed:", String(fatal).slice(0, 200));
       setFolderResolving(false);
     }
     return () => {
