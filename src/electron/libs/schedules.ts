@@ -51,6 +51,10 @@ export async function schedulesByConversation(agentId: string): Promise<
   const byConv: Record<string, Array<{ id: string; name: string; status?: string }>> = {};
   for (const task of tasks) {
     if (!task.conversation_id) continue;
+    // Badges count LIVE schedules only: terminal ones (fired/cancelled/
+    // missed husks) would render a permanent count linking to nothing
+    // alive. Same status field live-probed in #17.
+    if (task.status !== undefined && task.status !== "active" && task.status !== "paused") continue;
     (byConv[task.conversation_id] ??= []).push({
       id: task.id,
       name: task.name,
