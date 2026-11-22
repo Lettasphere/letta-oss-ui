@@ -78,13 +78,22 @@ function FolderMenu({ cwd }: { cwd: string }) {
           // No remembered pick: discover the target's own default. In
           // remote-env mode the default target IS this machine's registration —
           // null would fall to the sandbox transport (credit-walled).
-          return window.bridge.getDefaultDirectory({
+          // Guarded like the retry: HMR/module-reload can hand back a torn
+          // bridge binding (undefined) — treat as failure, not a crash, and
+          // let the retry loop carry it.
+          const pendingPrimary = window.bridge.getDefaultDirectory({
             selector: targetDeviceId
               ? { deviceId: targetDeviceId }
               : effectiveEnv === "remote"
                 ? "remote-default"
                 : null,
-          })
+          });
+          if (!pendingPrimary || typeof pendingPrimary.then !== "function") {
+            console.warn("[chip] discovery bridge unavailable (module reload?)");
+            setTargetFolder(null);
+            return;
+          }
+          return pendingPrimary
             .then((def) => {
               setTargetFolder(def);
             })
