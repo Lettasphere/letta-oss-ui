@@ -558,6 +558,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         const stored = (await api.getSettings()).lastConversationByAgent?.[agentId];
         if (stored && get().agentId === agentId) {
           set({ activeId: stored });
+          // Restoring opens it — mark seen at restore time (Uncia conditional:
+          // the restored conversation must not read as unread on arrival).
+          get().advanceReadState(stored, Date.now());
           // Restoring must also DRIVE the load — openChat's loadHistory
           // doesn't run for a restored id (the transcript spun until a
           // manual click).
