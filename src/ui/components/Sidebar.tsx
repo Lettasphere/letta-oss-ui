@@ -61,6 +61,9 @@ function AgentSwitcher() {
   );
 }
 
+/** Stable empty — a fresh [] per snapshot re-renders forever (lesson #625). */
+const NO_MONITORS: Array<{ id: string; name: string; status?: string }> = [];
+
 function ConversationItem({
   conversation,
   now,
@@ -82,7 +85,9 @@ function ConversationItem({
     (state) => state.view === "chat" && state.activeId === conversation.id,
   );
   const running = useAppStore((state) => state.chats[conversation.id]?.running ?? false);
-  const monitorSchedules = useAppStore((state) => state.monitorSchedules[conversation.id] ?? []);
+  const monitorSchedules = useAppStore(
+    (state) => state.monitorSchedules[conversation.id] ?? NO_MONITORS,
+  );
   const waiting = useAppStore((state) => (state.chats[conversation.id]?.approvals.length ?? 0) > 0);
   const openChat = useAppStore((state) => state.openChat);
   const archiveConversation = useAppStore((state) => state.archiveConversation);
