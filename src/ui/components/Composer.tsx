@@ -296,11 +296,13 @@ function MonitorBar() {
     const poll = () => {
       window.bridge
         .listMonitors({ conversationId: activeId })
-        .then((rows) => {
-          if (!cancelled) {
-            setMonitors(rows);
-            setFailed(false);
-          }
+        .then((all) => {
+          if (cancelled) return;
+          // ACTIVE only: terminal monitors (completed/failed/expired) persist
+          // server-side forever as history — showing them turns the bar into
+          // an ever-growing archive. The bar means "watching now".
+          setMonitors(all.filter((m) => m.status === "running" || m.status === "paused"));
+          setFailed(false);
         })
         .catch(() => {
           if (!cancelled) setFailed(true);
