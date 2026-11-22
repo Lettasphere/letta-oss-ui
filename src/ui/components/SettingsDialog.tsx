@@ -3,6 +3,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useAppStore, type SettingsTab } from "../store";
 import type { AppSettings, BackendKind, SavedConnection, SettingsUpdate } from "../types";
 import { ProvidersPanel } from "./ProvidersPanel";
+
 import { CloseIcon, Spinner } from "./icons";
 
 const TABS: Array<{ id: SettingsTab; label: string }> = [
@@ -412,6 +413,7 @@ export function SettingsDialog() {
             <SettingsForm settings={settings} onClose={() => setSettingsOpen(false)} />
           )}
           {open && tab === "providers" && <ProvidersPanel />}
+
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>

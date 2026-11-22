@@ -89,6 +89,13 @@ export const MoreIcon = (props: IconProps) => (
   </Icon>
 );
 
+export const ClockIcon = (props: IconProps) => (
+  <Icon {...props}>
+    <circle cx="12" cy="12" r="8" />
+    <path d="M12 8v4l3 2" />
+  </Icon>
+);
+
 export const MemoryIcon = (props: IconProps) => (
   <Icon {...props}>
     <path d="M5 4h10l4 4v12H5Z" />

@@ -3,6 +3,7 @@ import { AgentSettingsDialog } from "./components/AgentSettingsDialog";
 import { AuthBanner } from "./components/AuthBanner";
 import { ChatView } from "./components/ChatView";
 import { MemoryView } from "./components/MemoryView";
+import { SchedulesView } from "./components/SchedulesView";
 import { NewAgentDialog } from "./components/NewAgentDialog";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { Sidebar } from "./components/Sidebar";
@@ -58,7 +59,7 @@ export default function App() {
   return (
     <div className="flex h-screen overflow-hidden bg-surface text-ink-900">
       <Sidebar />
-      {view === "memory" ? <MemoryView key={agentId} /> : <ChatView />}
+      {view === "memory" ? <MemoryView key={agentId} /> : view === "schedules" ? <SchedulesView key={agentId} /> : <ChatView />}
       <SettingsDialog />
       <NewAgentDialog />
       <AgentSettingsDialog />
