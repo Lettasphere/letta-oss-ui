@@ -26,6 +26,8 @@ function findCli(): string {
 }
 
 let launched: ChildProcess | null = null;
+let registrationGeneration = 0;
+let lastForcedRespawn = -1;
 
 /** The registration's true identity, parsed from the CLI's startup output —
  * the name the registry ACTUALLY assigned (including any dedup suffix) and
@@ -132,7 +134,7 @@ function sweepStrayRegistrations(): void {
 }
 
 /** Ensure a `letta server` (remote mode) registration is running. Idempotent. */
-export type SpawnReason = "mode-switch" | "replacement";
+export type SpawnReason = "mode-switch" | "replacement" | "registration-timeout";
 
 export function ensureRemoteEnv(
   env?: Record<string, string>,
@@ -164,6 +166,26 @@ export function ensureRemoteEnv(
   state.running = true;
   state.effectiveName = null;
   state.connectionId = null;
+
+  // REGISTRATION WATCHDOG: if the spawn never registers (log parse finds
+  // no connectionId — registration handshake silently died), the app sat
+  // on "not up yet" forever. 60s → kill + respawn once; second failure →
+  // surface the wedged state honestly. THE last unguarded lifecycle leg.
+  const spawnGeneration = ++registrationGeneration;
+  const registrationDeadline = setTimeout(() => {
+    if (spawnGeneration !== registrationGeneration) return; // superseded
+    if (state.connectionId) return; // registered — deadline moot
+    console.warn("[remote-env] registration did not land in 60s — respawning");
+    try { child.kill(); } catch { /* already dead */ }
+    if (spawnGeneration - lastForcedRespawn < 2) {
+      // second consecutive failure — stop respawning, surface it
+      setAuthState({ status: "failed", reason: "registration-timeout" });
+      return;
+    }
+    lastForcedRespawn = spawnGeneration;
+    ensureRemoteEnv(env, "registration-timeout");
+  }, 60_000);
+  child.on("exit", () => clearTimeout(registrationDeadline));
 
   // stdout does NOT carry the registered identity: it prints the REQUESTED
   // name ("The name of your computer is: X"), but the server may append a
