@@ -308,6 +308,19 @@ export const useAppStore = create<AppState>((set, get) => ({
     const [settings, connection] = await Promise.all([api.getSettings(), api.getConnection()]);
     set({ settings });
     get().handleEvent({ type: "connection", state: connection });
+    // Close the publish-before-subscribe window: the ready event can fire
+    // BETWEEN the snapshot above and this line (subscription is attached
+    // before bootstrap runs, but the snapshot itself is stale by one tick).
+    // Re-fetch once; if the state moved, replay the fresh one.
+    try {
+      const latest = await api.getConnection();
+      const seen = get().connection;
+      if (latest.status !== seen?.status) {
+        get().handleEvent({ type: "connection", state: latest });
+      }
+    } catch {
+      /* the snapshot stands */
+    }
   },
 
   handleEvent: (event) => {
