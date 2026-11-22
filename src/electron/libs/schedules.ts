@@ -41,3 +41,25 @@ export async function deleteSchedule(taskId: string): Promise<void> {
 export async function triggerSchedule(taskId: string): Promise<void> {
   await request("cron_trigger", { task_id: taskId });
 }
+
+/** Group the agent's schedules by conversation id — powers the per-conversation
+ *  monitor badge (an active schedule attached to THIS chat). */
+export async function schedulesByConversation(agentId: string): Promise<
+  Record<string, Array<{ id: string; name: string; status?: string }>>
+> {
+  const tasks = await listSchedules(agentId);
+  const byConv: Record<string, Array<{ id: string; name: string; status?: string }>> = {};
+  for (const task of tasks) {
+    if (!task.conversation_id) continue;
+    // Badges count LIVE schedules only: terminal ones (fired/cancelled/
+    // missed husks) would render a permanent count linking to nothing
+    // alive. Same status field live-probed in #17.
+    if (task.status !== undefined && task.status !== "active" && task.status !== "paused") continue;
+    (byConv[task.conversation_id] ??= []).push({
+      id: task.id,
+      name: task.name,
+      status: task.status,
+    });
+  }
+  return byConv;
+}

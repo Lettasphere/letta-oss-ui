@@ -246,6 +246,7 @@ export type AppRequests = {
   getConversationEnv(conversationId: string): ConversationEnv;
   getAllConversationEnvs(): Record<string, ComputerSelectorField | null>;
   getAgentLayout(): { order: string[]; pinned: string[] };
+  listMonitors(input: { conversationId: string }): Array<{ id: string; description: string | null; status: string | null; kind: string | null }> | Array<{ id: string; description: string; status: "unavailable"; kind: "error" }>;
   agentRailStatus(input: { agentId: string }): Promise<{ agentId: string; latestAt: string | null; latestConversationId: string | null }>;
   setAgentLayout(input: { order: string[]; pinned: string[] }): { order: string[]; pinned: string[] };
   setConversationEnv(input: {
@@ -262,6 +263,7 @@ export type AppRequests = {
   }): string[];
   getConversationCwd(conversationId: string): string | null;
   clearBrowseCache(): void;
+  schedulesByConversation(input: { agentId: string }): Record<string, Array<{ id: string; name: string; status?: string }>>;
   listSchedules(input: { agentId: string }): Promise<import("./libs/schedules.js").CronTask[]>;
   pauseSchedule(input: { taskId: string }): Promise<void>;
   resumeSchedule(input: { taskId: string }): Promise<void>;

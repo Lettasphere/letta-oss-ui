@@ -112,6 +112,8 @@ function createBridge() {
     setAgentLayout: vi.fn().mockResolvedValue({ order: [], pinned: [] }),
     listConversationsFirstPage: vi.fn().mockResolvedValue([]),
     agentRailStatus: vi.fn().mockResolvedValue({ agentId: "", latestAt: null, latestConversationId: null }),
+    schedulesByConversation: vi.fn().mockResolvedValue({}),
+    listMonitors: vi.fn().mockResolvedValue([]),
   } satisfies Record<keyof AppBridge, unknown>;
 }
 

@@ -129,6 +129,8 @@ type AppState = {
    *  agent (not just selected). The unselected-unread signal derives from
    *  this live, with the 30s poll as cron-only backstop. */
   agentActivity: Record<string, number>;
+  /** conversationId -> attached schedules (the monitor badge source). */
+  monitorSchedules: Record<string, Array<{ id: string; name: string; status?: string }>>;
   /** Handover lifecycle: disconnect detected → switching → stable. */
   remoteHandover: { phase: "stable" } | { phase: "switching"; since: number; reason: string };
   /** Live adoption state (owned vs adopted registration) — event-driven. */
@@ -275,6 +277,7 @@ const CLEARED = {
   conversationAgentIndex: {},
   runningConversations: new Set<string>(),
   agentActivity: {},
+  monitorSchedules: {},
   remoteAdoption: { kind: "none" },
   remoteAuth: { status: "idle" },
   providers: null,
@@ -585,6 +588,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       // Progressive: first 25 paint immediately (cheap filter, no probes);
       // the full verified list replaces it when ready.
+      // Monitor badges: schedules attached to each conversation (cron's
+      // conversation_id grouping).
+      void window.bridge
+        .schedulesByConversation({ agentId })
+        .then((monitorSchedules) => {
+          if (get().agentId === agentId) set({ monitorSchedules });
+        })
+        .catch(() => undefined);
       const first = await api.listConversationsFirstPage(agentId);
       if (get().agentId === agentId && get().conversations.length === 0) {
         // First paint IS a loaded state — clear the loading flag here; the

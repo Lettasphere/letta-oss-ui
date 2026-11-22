@@ -40,8 +40,9 @@ import {
 } from "./libs/settings.js";
 import { getAllConversationEnvs, getConversationEnv, listComputers, setConversationEnv } from "./libs/env.js";
 import { agentRailStatus } from "./libs/agent-status.js";
+import { listMonitors } from "./libs/monitors.js";
 import { intakeFiles } from "./libs/attachments.js";
-import { deleteSchedule, listSchedules, pauseSchedule, resumeSchedule, triggerSchedule } from "./libs/schedules.js";
+import { deleteSchedule, listSchedules, pauseSchedule, resumeSchedule, schedulesByConversation, triggerSchedule } from "./libs/schedules.js";
 import {
   clearBrowseCache,
   getDefaultDirectory,
@@ -109,6 +110,7 @@ const handlers: Handlers = {
   getAllConversationEnvs,
   setConversationEnv: (input) => setConversationEnv(input.conversationId, input.selector),
   agentRailStatus: (input) => agentRailStatus(input.agentId),
+  listMonitors: (input) => listMonitors(input.conversationId),
   getAgentLayout: () => ({ order: load().agentOrder ?? [], pinned: load().pinnedAgents ?? [] }),
   setAgentLayout: (input) => {
     save({ ...load(), agentOrder: input.order, pinnedAgents: input.pinned });
@@ -256,6 +258,7 @@ const handlers: Handlers = {
   sendMessage,
   stopTurn,
   respondApproval,
+  schedulesByConversation: (input) => schedulesByConversation(input.agentId),
   listSchedules: (input) => listSchedules(input.agentId),
   pauseSchedule: (input) => pauseSchedule(input.taskId),
   resumeSchedule: (input) => resumeSchedule(input.taskId),
