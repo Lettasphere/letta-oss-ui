@@ -14,8 +14,11 @@ export interface MonitorInfo {
 
 export async function listMonitors(conversationId: string): Promise<MonitorInfo[]> {
   const config = getConnectionConfig();
-  if (!config.apiKey || !config.apiBaseUrl) throw new Error("No cloud API configured.");
-  const url = `${config.apiBaseUrl.replace(/\/$/, "")}/v1/monitors?conversation_id=${encodeURIComponent(conversationId)}`;
+  if (!config.apiKey) throw new Error("No cloud API key configured.");
+  // apiBaseUrl is optional (empty = default cloud); the monitors endpoint
+  // lives on the plain cloud API base.
+  const base = (config.apiBaseUrl || "https://api.letta.com").replace(/\/$/, "");
+  const url = `${base}/v1/monitors?conversation_id=${encodeURIComponent(conversationId)}`;
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${config.apiKey}` },
   });
