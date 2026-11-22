@@ -199,12 +199,23 @@ export function AgentRail() {
     const owner = conversationAgentIndex[convId];
     if (owner) workingAgents.add(owner);
   }
-  // Belt: the selected agent's own chat state also counts (index may lag).
+  // Belt 1: the selected agent's own chat state also counts (index may lag).
   const working = useAppStore((state) => {
     if (!state.agentId || !state.activeId) return false;
     return Boolean(state.chats[state.activeId]?.running);
   });
   if (working && agentId) workingAgents.add(agentId);
+  // Belt 2: API-side runs (gate reviews on other agents' own convs, crons,
+  // device work) emit NO turn.started to us — but they DO bump agentActivity
+  // via conversation.updated. A very recent unread bump on a NON-selected
+  // agent = that agent is producing output right now = working.
+  const now = Date.now();
+  for (const agent of agents) {
+    if (agent.id === agentId) continue; // selected: chat state covers it
+    const at = agentActivity[agent.id] ?? 0;
+    const read = agentReadFloors[agent.id] ?? 0;
+    if (at > now - 90_000 && at > read) workingAgents.add(agent.id);
+  }
 
   if (agents.length === 0) return null;
 

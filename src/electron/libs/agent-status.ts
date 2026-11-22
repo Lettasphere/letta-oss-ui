@@ -39,5 +39,4 @@ export async function agentRailStatus(agentId: string): Promise<AgentRailStatus>
     const at = c.last_message_at ?? c.updated_at ?? null;
     if (at && (!latest.at || at > latest.at)) latest = { at, id: c.id };
   }
-  return { agentId, latestAt: latest.at, latestConversationId: latest.id };
 }
