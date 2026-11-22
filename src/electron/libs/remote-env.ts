@@ -1,5 +1,7 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { app } from "electron";
 import { load } from "./settings.js";
@@ -26,6 +28,8 @@ function findCli(): string {
 }
 
 let launched: ChildProcess | null = null;
+let registrationGeneration = 0;
+let lastForcedRespawn = -1;
 
 /** The registration's true identity, parsed from the CLI's startup output —
  * the name the registry ACTUALLY assigned (including any dedup suffix) and
@@ -132,7 +136,7 @@ function sweepStrayRegistrations(): void {
 }
 
 /** Ensure a `letta server` (remote mode) registration is running. Idempotent. */
-export type SpawnReason = "mode-switch" | "replacement";
+export type SpawnReason = "mode-switch" | "replacement" | "registration-timeout";
 
 export function ensureRemoteEnv(
   env?: Record<string, string>,
@@ -165,6 +169,57 @@ export function ensureRemoteEnv(
   state.effectiveName = null;
   state.connectionId = null;
 
+  // REGISTRATION WATCHDOG: if the spawn never registers (log parse finds
+  // no connectionId — registration handshake silently died), the app sat
+  // on "not up yet" forever. 60s → kill; the RESPAWN is armed for the
+  // child's own exit handler — never inline (the same-tick race made the
+  // old 'respawn' a silent no-op: ensureRemoteEnv's running-guard saw
+  // exitCode still null). Second consecutive failure surfaces the wedge
+  // honestly, set AFTER the exit handler's churn via setImmediate.
+  const spawnGeneration = ++registrationGeneration;
+  const spawnTimeMs = Date.now();
+  // Identity poll: the banner chunk carrying 'Log file:' can be lost
+  // (stdout race) — the parser must run regardless. Poll every 2s until
+  // identity lands or the child exits; readIdentityFromLog's fallback
+  // finds the newest log without any banner.
+  const identityPollTimer = setInterval(() => {
+    if (state.connectionId) {
+      clearInterval(identityPollTimer);
+      return;
+    }
+    readIdentityFromLog();
+  }, 2_000);
+  let respawnOnExit = false;
+  const registrationDeadline = setTimeout(() => {
+    if (spawnGeneration !== registrationGeneration) return; // superseded
+    if (state.connectionId) return; // registered — deadline moot
+    console.warn("[remote-env] registration did not land in 60s — killing for respawn");
+    respawnOnExit = spawnGeneration - lastForcedRespawn >= 2;
+    lastForcedRespawn = spawnGeneration;
+    try { child.kill(); } catch { /* already dead */ }
+  }, 60_000);
+  child.on("exit", () => {
+    clearInterval(identityPollTimer);
+    clearTimeout(registrationDeadline);
+    if (spawnGeneration !== registrationGeneration) return; // superseded
+    if (respawnOnExit) {
+      respawnOnExit = false;
+      // Exit fired: exitCode is set, the running-guard passes, the
+      // deferred spawn actually happens.
+      setImmediate(() => ensureRemoteEnv(env, "registration-timeout"));
+    } else if (lastForcedRespawn === spawnGeneration) {
+      // Second consecutive failure — surface the wedge honestly.
+      state.running = false;
+      setImmediate(() =>
+        setAuthState({
+          status: "failed",
+          error: "Spawn registration timed out twice — check ~/.letta/logs/remote",
+          reason: "registration-timeout",
+        }),
+      );
+    }
+  });
+
   // stdout does NOT carry the registered identity: it prints the REQUESTED
   // name ("The name of your computer is: X"), but the server may append a
   // dedup suffix at registration (-N on name collisions) — the EFFECTIVE
@@ -175,6 +230,24 @@ export function ensureRemoteEnv(
   let identityTimer: ReturnType<typeof setTimeout> | null = null;
 
   const readIdentityFromLog = () => {
+    // The banner's log path can be stale/missing (stdout chunk race) — fall
+    // back to the NEWEST file in the remote logs dir; the current spawn's
+    // log is always the freshest one there.
+    if (!logPath || !existsSync(logPath)) {
+      try {
+        const dir = join(homedir(), ".letta", "logs", "remote");
+        const newest = readdirSync(dir)
+          .filter((f) => f.endsWith(".log"))
+          .map((f) => ({ f, m: statSync(join(dir, f)).mtimeMs }))
+          // mtime floor at spawn time: an older session's log (stale
+          // newest by clock skew) must never satisfy this spawn's identity.
+          .filter((e) => e.m >= spawnTimeMs - 5_000)
+          .sort((a, b) => b.m - a.m)[0];
+        if (newest) logPath = join(dir, newest.f);
+      } catch {
+        return;
+      }
+    }
     if (!logPath || !existsSync(logPath)) return;
     try {
       const log = readFileSync(logPath, "utf8");

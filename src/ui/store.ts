@@ -137,10 +137,10 @@ type AppState = {
     | { kind: "adopted"; connectionId: string; name: string; deviceId: string }
     | { kind: "owned"; connectionId: string; name: string; deviceId: string };
   remoteAuth:
-    | { status: "idle" }
-    | { status: "pending"; url: string | null; userCode: string | null; reason: "mode-switch" | "replacement" }
+    | { status: "idle"; reason?: string }
+    | { status: "pending"; url: string | null; userCode: string | null; reason: string }
     | { status: "done" }
-    | { status: "failed"; error: string | null; reason: "mode-switch" | "replacement" };
+    | { status: "failed"; error: string | null; reason: string };
   computers: ComputerSummary[];
   computersLoading: boolean;
   computersError: string | null;
@@ -888,7 +888,6 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   openSchedules: () => {
     set({ view: "schedules" });
-    void get().loadMemory();
   },
 
   loadMemory: async () => {

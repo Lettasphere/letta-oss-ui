@@ -69,12 +69,40 @@ async function envListClient(connectionId: string): Promise<{
   } as never).connect();
   const wrapped = opened as never;
   envClients.set(connectionId, wrapped);
+  envClientsStamped.set(connectionId, Date.now());
+  // Close-event eviction: a clean server-side close evicts immediately
+  // instead of waiting for the next browse's failed ping.
+  (wrapped as { onClose?: (cb: () => void) => void }).onClose?.(() => evictEnvClient(connectionId));
   return wrapped;
 }
 
+const ENV_SOCKET_TTL_MS = 10 * 60 * 1000; // lease rotations make old sockets suspect
+const envClientsStamped = new Map<string, number>();
+
+/** Evict a cached env socket (called on close events + TTL checks). */
+function evictEnvClient(connectionId: string): void {
+  const hit = envClients.get(connectionId);
+  envClients.delete(connectionId);
+  envClientsStamped.delete(connectionId);
+  if (hit) void (hit as { close: () => Promise<void> }).close().catch(() => undefined);
+}
+
 async function listOnComputer(selector: ComputerSelector, path: string): Promise<string[]> {
-  const resolved = await client().computers.resolve(selector);
+  // resolve() can hang (API stall) — cap it; a hung resolve previously hung
+  // the whole browse chain despite transport-level guards.
+  const resolved = await Promise.race([
+    client().computers.resolve(selector),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("Computer lookup timed out.")), 10_000),
+    ),
+  ]);
   if (!resolved.connectionId) throw new Error("That computer is offline.");
+  // TTL: sockets older than the lease-rotation window get evicted proactively
+  // (not on the failed-ping path — every browse was paying a 3s dead-ping tax).
+  const stamped = envClientsStamped.get(resolved.connectionId) ?? 0;
+  if (Date.now() - stamped > ENV_SOCKET_TTL_MS) {
+    evictEnvClient(resolved.connectionId);
+  }
   const env = await envListClient(resolved.connectionId);
   const requestId = `browse-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const reply = (await env.requestRaw(

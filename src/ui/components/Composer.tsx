@@ -66,9 +66,13 @@ function FolderMenu({ cwd }: { cwd: string }) {
     // freezing the chip at "Remote". Losing the race = retry next open.
     const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000));
     const resolvedRef = { done: false };
+    try {
+    // The FIRST bridge call is guarded too: every layer of this chain has
+    // produced 'reading catch' at one time or another — nothing gets to
+    // throw uncaught, and nothing gets to be undefined-then-chained.
+    const rememberedP = window.bridge.getTargetFolder({ targetKey });
     void Promise.race([
-      window.bridge
-        .getTargetFolder({ targetKey })
+      Promise.resolve(rememberedP)
         .then((remembered) => {
           if (remembered) {
             resolvedRef.done = true;
@@ -78,13 +82,22 @@ function FolderMenu({ cwd }: { cwd: string }) {
           // No remembered pick: discover the target's own default. In
           // remote-env mode the default target IS this machine's registration —
           // null would fall to the sandbox transport (credit-walled).
-          return window.bridge.getDefaultDirectory({
+          // Guarded like the retry: HMR/module-reload can hand back a torn
+          // bridge binding (undefined) — treat as failure, not a crash, and
+          // let the retry loop carry it.
+          const pendingPrimary = window.bridge.getDefaultDirectory({
             selector: targetDeviceId
               ? { deviceId: targetDeviceId }
               : effectiveEnv === "remote"
                 ? "remote-default"
                 : null,
-          })
+          });
+          if (!pendingPrimary || typeof pendingPrimary.then !== "function") {
+            console.warn("[chip] discovery bridge unavailable (module reload?)");
+            setTargetFolder(null);
+            return;
+          }
+          return pendingPrimary
             .then((def) => {
               setTargetFolder(def);
             })
@@ -140,6 +153,10 @@ function FolderMenu({ cwd }: { cwd: string }) {
         retry();
       }
     });
+    } catch (fatal) {
+      console.warn("[chip] discovery chain crashed:", String(fatal).slice(0, 200));
+      setFolderResolving(false);
+    }
     return () => {
       for (const id of pendingTimers) clearTimeout(id);
     };
