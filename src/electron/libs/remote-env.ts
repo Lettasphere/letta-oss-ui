@@ -171,23 +171,54 @@ export function ensureRemoteEnv(
 
   // REGISTRATION WATCHDOG: if the spawn never registers (log parse finds
   // no connectionId — registration handshake silently died), the app sat
-  // on "not up yet" forever. 60s → kill + respawn once; second failure →
-  // surface the wedged state honestly. THE last unguarded lifecycle leg.
+  // on "not up yet" forever. 60s → kill; the RESPAWN is armed for the
+  // child's own exit handler — never inline (the same-tick race made the
+  // old 'respawn' a silent no-op: ensureRemoteEnv's running-guard saw
+  // exitCode still null). Second consecutive failure surfaces the wedge
+  // honestly, set AFTER the exit handler's churn via setImmediate.
   const spawnGeneration = ++registrationGeneration;
+  const spawnTimeMs = Date.now();
+  // Identity poll: the banner chunk carrying 'Log file:' can be lost
+  // (stdout race) — the parser must run regardless. Poll every 2s until
+  // identity lands or the child exits; readIdentityFromLog's fallback
+  // finds the newest log without any banner.
+  const identityPollTimer = setInterval(() => {
+    if (state.connectionId) {
+      clearInterval(identityPollTimer);
+      return;
+    }
+    readIdentityFromLog();
+  }, 2_000);
+  let respawnOnExit = false;
   const registrationDeadline = setTimeout(() => {
     if (spawnGeneration !== registrationGeneration) return; // superseded
     if (state.connectionId) return; // registered — deadline moot
-    console.warn("[remote-env] registration did not land in 60s — respawning");
-    try { child.kill(); } catch { /* already dead */ }
-    if (spawnGeneration - lastForcedRespawn < 2) {
-      // second consecutive failure — stop respawning, surface it
-      setAuthState({ status: "idle", reason: "registration-timeout" });
-      return;
-    }
+    console.warn("[remote-env] registration did not land in 60s — killing for respawn");
+    respawnOnExit = spawnGeneration - lastForcedRespawn >= 2;
     lastForcedRespawn = spawnGeneration;
-    ensureRemoteEnv(env, "registration-timeout");
+    try { child.kill(); } catch { /* already dead */ }
   }, 60_000);
-  child.on("exit", () => clearTimeout(registrationDeadline));
+  child.on("exit", () => {
+    clearInterval(identityPollTimer);
+    clearTimeout(registrationDeadline);
+    if (spawnGeneration !== registrationGeneration) return; // superseded
+    if (respawnOnExit) {
+      respawnOnExit = false;
+      // Exit fired: exitCode is set, the running-guard passes, the
+      // deferred spawn actually happens.
+      setImmediate(() => ensureRemoteEnv(env, "registration-timeout"));
+    } else if (lastForcedRespawn === spawnGeneration) {
+      // Second consecutive failure — surface the wedge honestly.
+      state.running = false;
+      setImmediate(() =>
+        setAuthState({
+          status: "failed",
+          error: "Spawn registration timed out twice — check ~/.letta/logs/remote",
+          reason: "registration-timeout",
+        }),
+      );
+    }
+  });
 
   // stdout does NOT carry the registered identity: it prints the REQUESTED
   // name ("The name of your computer is: X"), but the server may append a
@@ -208,6 +239,9 @@ export function ensureRemoteEnv(
         const newest = readdirSync(dir)
           .filter((f) => f.endsWith(".log"))
           .map((f) => ({ f, m: statSync(join(dir, f)).mtimeMs }))
+          // mtime floor at spawn time: an older session's log (stale
+          // newest by clock skew) must never satisfy this spawn's identity.
+          .filter((e) => e.m >= spawnTimeMs - 5_000)
           .sort((a, b) => b.m - a.m)[0];
         if (newest) logPath = join(dir, newest.f);
       } catch {
