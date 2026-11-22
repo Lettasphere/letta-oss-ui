@@ -17,7 +17,7 @@ const settings: AppSettings = {
   hasApiKey: false,
   hasServerToken: false,
   permissionMode: "standard",
-  agentId: "agent-2",
+  agentId: "agent-2", lastConversationByAgent: {},
   recentCwds: ["/recent"],
   defaultCwd: "/home",
 };
@@ -108,6 +108,10 @@ function createBridge() {
     deleteSchedule: vi.fn().mockResolvedValue(undefined),
     triggerSchedule: vi.fn().mockResolvedValue(undefined),
     getAllConversationEnvs: vi.fn().mockResolvedValue({}),
+    getAgentLayout: vi.fn().mockResolvedValue({ order: [], pinned: [] }),
+    setAgentLayout: vi.fn().mockResolvedValue({ order: [], pinned: [] }),
+    listConversationsFirstPage: vi.fn().mockResolvedValue([]),
+    agentRailStatus: vi.fn().mockResolvedValue({ agentId: "", latestAt: null, latestConversationId: null }),
   } satisfies Record<keyof AppBridge, unknown>;
 }
 

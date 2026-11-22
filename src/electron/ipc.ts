@@ -9,6 +9,7 @@ import {
   getConnection,
   listAgents,
   listConversations,
+  listConversationsFirstPage,
   loadHistory,
   reconnect,
   renameConversation,
@@ -38,6 +39,7 @@ import {
   updateSettings,
 } from "./libs/settings.js";
 import { getAllConversationEnvs, getConversationEnv, listComputers, setConversationEnv } from "./libs/env.js";
+import { agentRailStatus } from "./libs/agent-status.js";
 import { intakeFiles } from "./libs/attachments.js";
 import { deleteSchedule, listSchedules, pauseSchedule, resumeSchedule, triggerSchedule } from "./libs/schedules.js";
 import {
@@ -106,6 +108,12 @@ const handlers: Handlers = {
   getConversationEnv,
   getAllConversationEnvs,
   setConversationEnv: (input) => setConversationEnv(input.conversationId, input.selector),
+  agentRailStatus: (input) => agentRailStatus(input.agentId),
+  getAgentLayout: () => ({ order: load().agentOrder ?? [], pinned: load().pinnedAgents ?? [] }),
+  setAgentLayout: (input) => {
+    save({ ...load(), agentOrder: input.order, pinnedAgents: input.pinned });
+    return { order: input.order, pinned: input.pinned };
+  },
   getExecutionMode: () => load().executionMode ?? "local",
   getRemoteEnvName: () => load().remoteEnvName ?? "",
   listRemoteDirectory: (input) => listRemoteDirectory(input.selector, input.path),
@@ -241,6 +249,7 @@ const handlers: Handlers = {
   listMemoryHistory,
   readMemoryFileAt,
   listConversations,
+  listConversationsFirstPage,
   loadHistory,
   renameConversation,
   archiveConversation,

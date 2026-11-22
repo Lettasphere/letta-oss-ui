@@ -117,6 +117,18 @@ type AppState = {
   pinnedConversations: string[];
   /** conversationId -> last-seen updatedAt; newer rows render unread. */
   readCursors: Record<string, number>;
+  /** Per-agent read floor (ms) — when the agent's visible list has no
+   *  unread rows, the floor advances: rail unread uses max(cursor, floor). */
+  agentReadFloors: Record<string, number>;
+  /** conversationId -> agentId, built from every loaded list + rail polls —
+   *  lets turn events (which lack agentId) resolve cross-agent signals. */
+  conversationAgentIndex: Record<string, string>;
+  /** Conversations with a live turn — cross-agent working signal. */
+  runningConversations: Set<string>;
+  /** Per-agent latest activity ms — bumped by conversation.updated for ANY
+   *  agent (not just selected). The unselected-unread signal derives from
+   *  this live, with the 30s poll as cron-only backstop. */
+  agentActivity: Record<string, number>;
   /** Handover lifecycle: disconnect detected → switching → stable. */
   remoteHandover: { phase: "stable" } | { phase: "switching"; since: number; reason: string };
   /** Live adoption state (owned vs adopted registration) — event-driven. */
@@ -140,6 +152,8 @@ type AppState = {
   memory: MemoryState | null;
   conversations: ConversationSummary[];
   conversationsLoading: boolean;
+  /** True from first paint until the FULL verified list lands. */
+  conversationsRefreshing: boolean;
   conversationsLoaded: boolean;
   /** null is the new, unsent chat. */
   activeId: string | null;
@@ -207,6 +221,8 @@ type AppState = {
   refreshPinnedConversations: () => void;
   togglePinnedConversation: (conversationId: string) => void;
   markConversationRead: (conversationId: string, updatedAt: number) => void;
+  advanceReadState: (conversationId: string, seenAt: number) => void;
+  noteConversationAgent: (conversationId: string, agentId: string) => void;
   markAllRead: () => void;
   pickEnvironment: (selector: ComputerSelectorField | null | undefined) => void;
   /** Set the working folder for the ACTIVE conversation on the ACTIVE
@@ -255,6 +271,10 @@ const CLEARED = {
   remoteHandover: { phase: "stable" },
   pinnedConversations: [],
   readCursors: {},
+  agentReadFloors: {},
+  conversationAgentIndex: {},
+  runningConversations: new Set<string>(),
+  agentActivity: {},
   remoteAdoption: { kind: "none" },
   remoteAuth: { status: "idle" },
   providers: null,
@@ -262,6 +282,7 @@ const CLEARED = {
   memory: null,
   conversations: [],
   conversationsLoading: false,
+  conversationsRefreshing: false,
   conversationsLoaded: false,
   activeId: null,
   chats: {},
@@ -287,6 +308,19 @@ export const useAppStore = create<AppState>((set, get) => ({
     const [settings, connection] = await Promise.all([api.getSettings(), api.getConnection()]);
     set({ settings });
     get().handleEvent({ type: "connection", state: connection });
+    // Close the publish-before-subscribe window: the ready event can fire
+    // BETWEEN the snapshot above and this line (subscription is attached
+    // before bootstrap runs, but the snapshot itself is stale by one tick).
+    // Re-fetch once; if the state moved, replay the fresh one.
+    try {
+      const latest = await api.getConnection();
+      const seen = get().connection;
+      if (latest.status !== seen?.status) {
+        get().handleEvent({ type: "connection", state: latest });
+      }
+    } catch {
+      /* the snapshot stands */
+    }
   },
 
   handleEvent: (event) => {
@@ -343,13 +377,24 @@ export const useAppStore = create<AppState>((set, get) => ({
         break;
       }
       case "turn.started":
-        set((state) =>
-          patchChat(state, event.conversationId, () => ({
+        set((state) => ({
+          ...patchChat(state, event.conversationId, () => ({
             running: true,
             error: null,
             activity: "Starting",
           })),
-        );
+          runningConversations: new Set(state.runningConversations).add(event.conversationId),
+          // Source-truth index seeding: the turn knows its agent.
+          ...(event.agentId
+            ? {
+                conversationAgentIndex: {
+                  ...state.conversationAgentIndex,
+                  [event.conversationId]: event.agentId,
+                },
+              }
+            : {}),
+        }));
+        break;
         break;
       case "turn.rows":
         set((state) =>
@@ -373,26 +418,42 @@ export const useAppStore = create<AppState>((set, get) => ({
         );
         break;
       case "turn.finished":
-        set((state) =>
-          patchChat(state, event.conversationId, () => ({
-            running: false,
-            activity: null,
-            approvals: [],
-            error: event.error ?? null,
-          })),
-        );
+        set((state) => {
+          const next = new Set(state.runningConversations);
+          next.delete(event.conversationId);
+          return {
+            ...patchChat(state, event.conversationId, () => ({
+              running: false,
+              activity: null,
+              approvals: [],
+              error: event.error ?? null,
+            })),
+            runningConversations: next,
+          };
+        });
         // The agent may have rewritten its memory during the turn.
         if (get().view === "memory") void get().loadMemory();
         break;
       case "approval.requested":
-        set((state) =>
-          patchChat(state, event.conversationId, (chat) => ({
+        set((state) => ({
+          ...patchChat(state, event.conversationId, (chat) => ({
             approvals: [
               ...chat.approvals.filter((item) => item.requestId !== event.request.requestId),
               event.request,
             ],
           })),
-        );
+          // Waiting on a human decision IS unread-worthy. event.agentId is
+          // the SOURCE truth (threaded at the turn); index is fallback for
+          // older event shapes only.
+          ...((event.agentId ?? state.conversationAgentIndex[event.conversationId])
+            ? {
+                agentActivity: {
+                  ...state.agentActivity,
+                  [event.agentId ?? state.conversationAgentIndex[event.conversationId]!]: Date.now(),
+                },
+              }
+            : {}),
+        }));
         break;
       case "approval.resolved":
         set((state) =>
@@ -402,17 +463,30 @@ export const useAppStore = create<AppState>((set, get) => ({
         );
         break;
       case "conversation.updated": {
-        // An update to the OPEN conversation is seen the moment it renders.
-        if (get().activeId === event.conversation.id) {
-          void window.bridge
-            .markConversationRead({ conversationId: event.conversation.id, updatedAt: event.conversation.updatedAt })
-            .then((cursors) => set({ readCursors: cursors }))
-            .catch(() => undefined);
+        // ANY agent's activity bumps its freshness — the unselected-unread
+        // dot derives from this live (the 30s poll only covers cron fires
+        // that don't emit conversation.updated).
+        if (event.conversation.agentId) {
+          const at = event.conversation.updatedAt ?? Date.now();
+          set((state) => ({
+            agentActivity: {
+              ...state.agentActivity,
+              [event.conversation.agentId]: Math.max(at, state.agentActivity[event.conversation.agentId] ?? 0),
+            },
+          }));
         }
+        // An update to the OPEN conversation is seen the moment it renders.
         if (event.conversation.agentId !== get().agentId) break;
         set((state) => ({
           conversations: upsertConversation(state.conversations, event.conversation),
         }));
+        // AFTER the upsert: the open conversation is seen. Mark with the
+        // event's own updatedAt (mapped by toConversationSummary semantics)
+        // +1ms so the cursor always beats the row regardless of clock skew.
+        if (get().activeId === event.conversation.id) {
+          const row = get().conversations.find((c) => c.id === event.conversation.id);
+          get().advanceReadState(event.conversation.id, (row?.updatedAt ?? Date.now()) + 1);
+        }
         break;
       }
       case "menu":
@@ -443,7 +517,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         set({
           agentId: null,
           conversations: [],
-          conversationsLoading: false, conversationsLoaded: true,
+          conversationsLoading: false,
+  conversationsRefreshing: false, conversationsLoaded: true,
           activeId: null,
           view: "chat",
           memory: null,
@@ -471,9 +546,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   selectAgent: async (agentId) => {
+    // Idempotent: re-selecting the already-loaded agent must not wipe to a
+    // loading state (stray re-clicks / restore races looked like the app
+    // resetting on conversation click).
+    if (get().agentId === agentId && get().conversationsLoaded) return;
     set({
       agentId,
       conversationsLoading: true,
+      conversationsRefreshing: true,
       conversations: [],
       conversationsLoaded: false,
       activeId: null,
@@ -486,11 +566,61 @@ export const useAppStore = create<AppState>((set, get) => ({
       .then((settings) => set({ settings }))
       .catch(() => undefined);
     try {
+      // Restore the agent's last-open conversation (not a forced new chat).
+      try {
+        const stored = (await api.getSettings()).lastConversationByAgent?.[agentId];
+        if (stored && get().agentId === agentId) {
+          set({ activeId: stored });
+          // Restoring opens it — mark seen at restore time (Uncia conditional:
+          // the restored conversation must not read as unread on arrival).
+          get().advanceReadState(stored, Date.now());
+          // Restoring must also DRIVE the load — openChat's loadHistory
+          // doesn't run for a restored id (the transcript spun until a
+          // manual click).
+          const chat = get().chats[stored];
+          if (!chat?.loaded && !chat?.loading) void get().loadHistory(stored);
+        }
+      } catch {
+        /* absent setting — stay on new chat */
+      }
+      // Progressive: first 25 paint immediately (cheap filter, no probes);
+      // the full verified list replaces it when ready.
+      const first = await api.listConversationsFirstPage(agentId);
+      if (get().agentId === agentId && get().conversations.length === 0) {
+        // First paint IS a loaded state — clear the loading flag here; the
+        // full verified list silently replaces the content later.
+        set({ conversations: first, conversationsLoading: false, conversationsLoaded: true });
+      }
       const conversations = await api.listConversations(agentId);
-      if (get().agentId === agentId) set({ conversations, conversationsLoaded: true });
+      // Index conversation->agent for cross-agent turn-event resolution.
+      set((state) => {
+        const idx = { ...state.conversationAgentIndex };
+        for (const c of conversations) idx[c.id] = agentId;
+        return { conversationAgentIndex: idx };
+      });
+      if (get().agentId === agentId) {
+        const cursors = get().readCursors;
+        const anyUnread = conversations.some(
+          (c) => (cursors[c.id] ?? 0) < c.updatedAt,
+        );
+        if (!anyUnread) {
+          set((state) => ({
+            conversations,
+            conversationsLoading: false,
+  conversationsRefreshing: false,
+            conversationsLoaded: true,
+            agentReadFloors: {
+              ...state.agentReadFloors,
+              [agentId]: Date.now(),
+            },
+          }));
+        } else {
+          set({ conversations, conversationsLoading: false, conversationsLoaded: true, conversationsRefreshing: false });
+        }
+      }
     } catch (error) {
       if (get().agentId === agentId) {
-        set({ conversationsLoading: false, conversationsLoaded: true, notice: errorMessage(error) });
+        set({ conversationsLoading: false, conversationsRefreshing: false, conversationsLoaded: true, notice: errorMessage(error) });
       }
     }
   },
@@ -522,10 +652,21 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   openChat: (conversationId) => {
-    // Opening marks the conversation seen (its current state = read).
+    // Persist the agent's last-open conversation for switch-restore.
+    const currentAgent = get().agentId;
+    if (currentAgent && conversationId) {
+      void api
+        .updateSettings({
+          lastConversationByAgent: { [currentAgent]: conversationId },
+        } as never)
+        .catch(() => undefined);
+    }
+    // Opening marks the conversation seen. Date.now() (not the list's
+    // possibly-stale updatedAt) so the cursor covers any message that
+    // arrived between the list load and this open — the amber unread dot
+    // must clear on open, not linger until the next poll.
     if (conversationId) {
-      const updatedAt = get().conversations.find((c) => c.id === conversationId)?.updatedAt;
-      if (updatedAt) get().markConversationRead(conversationId, updatedAt);
+      get().markConversationRead(conversationId, Date.now());
     }
     set({ activeId: conversationId, view: "chat" });
     if (!conversationId) return;
@@ -802,6 +943,37 @@ export const useAppStore = create<AppState>((set, get) => ({
       cwdOverrides: { ...state.cwdOverrides, [state.activeId ?? NEW_CHAT]: cwd },
     })),
 
+  /** THE single write path for read state — keeps cursors, floors, and any
+   *  derived unread signals in sync. Every read-marking flows through here. */
+  noteConversationAgent: (conversationId: string, agentId: string) => {
+    if (get().conversationAgentIndex[conversationId] === agentId) return;
+    set((state) => ({
+      conversationAgentIndex: { ...state.conversationAgentIndex, [conversationId]: agentId },
+    }));
+  },
+
+  advanceReadState: (conversationId: string, seenAt: number) => {
+    const agentId = get().agentId;
+    void window.bridge
+      .markConversationRead({ conversationId, updatedAt: seenAt })
+      .then((cursors) => {
+        set((state) => {
+          const next: Partial<AppState> = { readCursors: cursors };
+          // If the conversation's agent is selected and NO loaded
+          // conversation is now unread, floor that agent — the sidebar
+          // list and the rail dot derive from the same state, so both
+          // clear together.
+          const convs = state.conversations;
+          const stillUnread = convs.some((c) => (cursors[c.id] ?? 0) < c.updatedAt);
+          if (agentId && !stillUnread && convs.length > 0) {
+            next.agentReadFloors = { ...state.agentReadFloors, [agentId]: Math.max(seenAt, state.agentReadFloors[agentId] ?? 0) };
+          }
+          return next;
+        });
+      })
+      .catch(() => undefined);
+  },
+
   markConversationRead: (conversationId: string, updatedAt: number) => {
     void window.bridge
       .markConversationRead({ conversationId, updatedAt })
@@ -809,7 +981,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   markAllRead: () => {
-    const items = get().conversations.map((c) => ({ conversationId: c.id, updatedAt: c.updatedAt }));
+    const agentId = get().agentId;
+    const items = get().conversations.map((c) => ({ conversationId: c.id, updatedAt: Date.now() }));
+    if (items.length === 0 && !agentId) return;
+    // Floor the agent regardless — mark-all means ALL read, including
+    // conversations the list can't see.
+    set((state) => ({
+      agentReadFloors: agentId
+        ? { ...state.agentReadFloors, [agentId]: Date.now() }
+        : state.agentReadFloors,
+    }));
     if (items.length === 0) return;
     void window.bridge
       .markAllConversationsRead({ items })

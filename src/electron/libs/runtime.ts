@@ -51,6 +51,9 @@ type PendingApproval = {
 
 type Turn = {
   conversationId: string;
+  /** Owning agent — approval/turn events carry it so cross-agent signal
+   *  resolution never depends on the renderer's index freshness. */
+  agentId: string;
   session: LettaCodeSession;
   accumulator: TranscriptAccumulator;
   /** Last version of each row sent to the renderer, for identity diffing. */
@@ -227,10 +230,43 @@ async function connect(): Promise<LettaAgentClient> {
 
 function ensureClient(): Promise<LettaAgentClient> {
   if (client) return Promise.resolve(client);
-  connecting ??= connect().finally(() => {
+  connecting ??= connectWithRetry().finally(() => {
     connecting = null;
   });
   return connecting;
+}
+
+/** connect() with a hard timeout and bounded retry — a wedged handshake
+ *  (adoption stall, silent spawn death) previously left the app on the
+ *  init spinner FOREVER with no retry and no error. Now: 45s cap per
+ *  attempt, 3 attempts with backoff, then a surfaced error state. */
+async function connectWithRetry(): Promise<LettaAgentClient> {
+  const TIMEOUT_MS = 45_000;
+  const MAX_ATTEMPTS = 3;
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const result = await Promise.race([
+        connect(),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error(`Connection attempt ${attempt} timed out after ${TIMEOUT_MS / 1000}s`)),
+            TIMEOUT_MS,
+          ),
+        ),
+      ]);
+      return result;
+    } catch (error) {
+      lastError = error;
+      console.warn(`[connect] attempt ${attempt}/${MAX_ATTEMPTS} failed:`, String(error).slice(0, 200));
+      if (attempt < MAX_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, 2000 * attempt));
+      }
+    }
+  }
+  // All attempts exhausted: surface an error state (never spin forever).
+  setConnection({ status: "error", backend: getConnectionConfig().backend, error: String(lastError).slice(0, 300) });
+  throw lastError;
 }
 
 export async function disconnect(): Promise<void> {
@@ -388,6 +424,41 @@ async function enrichDisplayFields(
     // a title/timestamp until a later load succeeds. Left unmemoized so the
     // next load retries.
   }
+}
+
+export async function listConversationsFirstPage(
+  agentId: string,
+  pageSize = 25,
+): Promise<ConversationSummary[]> {
+  // Fast first paint WITHOUT husk flash: over-fetch 100, drop archived and
+  // title-less rows (husks render as "New chat"), then PROBE the first
+  // batch concurrently — verified rows in ~2s. The title filter alone let
+  // named cron shells through; the probe alone was too slow; both = right.
+  const sdk = await ensureClient();
+  const page = await sdk.conversations.list({ agentId, limit: 100 });
+  const titled = page.filter(
+    (conversation) =>
+      !conversation.archived &&
+      Boolean(conversation.summary || conversation.last_message_at || (conversation as { name?: string | null }).name),
+  );
+  // Probe up to 2x pageSize candidates concurrently (10-wide) — enough
+  // survive husks to fill the page.
+  const candidates = titled.slice(0, pageSize * 2);
+  const verdicts = await Promise.all(
+    candidates.map((_, index) => {
+      const chunk = Math.floor(index / 10);
+      return new Promise<boolean>((resolve) => {
+        setTimeout(() => {
+          void hasMessages(sdk, candidates[index]!.id).then(resolve, () => resolve(false));
+        }, chunk * 150);
+      });
+    }),
+  );
+  return candidates
+    .filter((_, i) => verdicts[i])
+    .slice(0, pageSize)
+    .map(toConversationSummary)
+    .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 export async function listConversations(agentId: string): Promise<ConversationSummary[]> {
@@ -662,6 +733,7 @@ export async function sendMessage(input: SendMessageInput): Promise<Conversation
 
   const turn: Turn = {
     conversationId: conversation.id,
+    agentId: conversation.agentId,
     accumulator: createTranscriptAccumulator(),
     sent: new Map(),
     approvals: new Map(),
@@ -693,12 +765,17 @@ export async function sendMessage(input: SendMessageInput): Promise<Conversation
           turn.approvals.set(request.requestId, { request, resolve });
           // Make sure the tool call is on screen before asking about it.
           flushRows(turn);
-          emit({ type: "approval.requested", conversationId: turn.conversationId, request });
+          emit({
+            type: "approval.requested",
+            conversationId: turn.conversationId,
+            agentId: turn.agentId,
+            request,
+          });
         }),
     }),
   };
   turns.set(conversation.id, turn);
-  emit({ type: "turn.started", conversationId: conversation.id });
+  emit({ type: "turn.started", conversationId: conversation.id, agentId: turn.agentId });
   void runTurn(turn, text, input.otid, input.attachments ?? []);
 
   return conversation;

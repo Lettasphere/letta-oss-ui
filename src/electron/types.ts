@@ -25,6 +25,8 @@ export type AppSettings = {
   permissionMode: PermissionMode;
   /** Agent selected for the current backend. */
   agentId: string | null;
+  /** Agent id -> last-open conversation id. */
+  lastConversationByAgent: Record<string, string>;
   recentCwds: string[];
   defaultCwd: string;
 };
@@ -38,6 +40,8 @@ export type SettingsUpdate = {
   serverToken?: string | null;
   permissionMode?: PermissionMode;
   agentId?: string | null;
+  /** Merge-in: agent id -> last-open conversation id. */
+  lastConversationByAgent?: Record<string, string>;
 };
 
 import type { ComputerSummary, ComputerSelectorField, ConversationEnv } from "./libs/env.js";
@@ -221,12 +225,12 @@ export type AppEvent =
   | { type: "remote_handover"; handover: import("./libs/remote-env.js").HandoverState }
   | { type: "remote_auth"; auth: import("./libs/remote-env.js").RemoteAuthState }
   | { type: "connection"; state: ConnectionState }
-  | { type: "turn.started"; conversationId: string }
+  | { type: "turn.started"; conversationId: string; agentId?: string }
   | { type: "turn.rows"; conversationId: string; rows: ChatRow[] }
   | { type: "turn.rows.removed"; conversationId: string; keys: string[] }
   | { type: "turn.activity"; conversationId: string; activity: string | null }
   | { type: "turn.finished"; conversationId: string; error?: string }
-  | { type: "approval.requested"; conversationId: string; request: ApprovalRequest }
+  | { type: "approval.requested"; conversationId: string; agentId?: string; request: ApprovalRequest }
   | { type: "approval.resolved"; conversationId: string; requestId: string }
   | { type: "conversation.updated"; conversation: ConversationSummary }
   | { type: "menu"; command: "new-chat" | "settings" };
@@ -241,6 +245,9 @@ export type AppRequests = {
   listComputers(): ComputerSummary[];
   getConversationEnv(conversationId: string): ConversationEnv;
   getAllConversationEnvs(): Record<string, ComputerSelectorField | null>;
+  getAgentLayout(): { order: string[]; pinned: string[] };
+  agentRailStatus(input: { agentId: string }): Promise<{ agentId: string; latestAt: string | null; latestConversationId: string | null }>;
+  setAgentLayout(input: { order: string[]; pinned: string[] }): { order: string[]; pinned: string[] };
   setConversationEnv(input: {
     conversationId: string;
     /** null = cloud sandbox; undefined = inherit the mode default. */
@@ -313,6 +320,7 @@ export type AppRequests = {
   listMemoryHistory(agentId: string, path: string): MemoryCommit[];
   readMemoryFileAt(agentId: string, path: string, sha: string): string;
   listConversations(agentId: string): ConversationSummary[];
+  listConversationsFirstPage(agentId: string): ConversationSummary[];
   loadHistory(conversationId: string, limit: number): HistoryResult;
   renameConversation(conversationId: string, title: string): ConversationSummary;
   archiveConversation(conversationId: string): void;
