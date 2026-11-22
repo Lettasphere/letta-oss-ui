@@ -230,10 +230,43 @@ async function connect(): Promise<LettaAgentClient> {
 
 function ensureClient(): Promise<LettaAgentClient> {
   if (client) return Promise.resolve(client);
-  connecting ??= connect().finally(() => {
+  connecting ??= connectWithRetry().finally(() => {
     connecting = null;
   });
   return connecting;
+}
+
+/** connect() with a hard timeout and bounded retry — a wedged handshake
+ *  (adoption stall, silent spawn death) previously left the app on the
+ *  init spinner FOREVER with no retry and no error. Now: 45s cap per
+ *  attempt, 3 attempts with backoff, then a surfaced error state. */
+async function connectWithRetry(): Promise<LettaAgentClient> {
+  const TIMEOUT_MS = 45_000;
+  const MAX_ATTEMPTS = 3;
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const result = await Promise.race([
+        connect(),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error(`Connection attempt ${attempt} timed out after ${TIMEOUT_MS / 1000}s`)),
+            TIMEOUT_MS,
+          ),
+        ),
+      ]);
+      return result;
+    } catch (error) {
+      lastError = error;
+      console.warn(`[connect] attempt ${attempt}/${MAX_ATTEMPTS} failed:`, String(error).slice(0, 200));
+      if (attempt < MAX_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, 2000 * attempt));
+      }
+    }
+  }
+  // All attempts exhausted: surface an error state (never spin forever).
+  setConnection({ status: "error", backend: getConnectionConfig().backend, error: String(lastError).slice(0, 300) });
+  throw lastError;
 }
 
 export async function disconnect(): Promise<void> {
