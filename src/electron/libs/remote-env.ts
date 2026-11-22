@@ -1,5 +1,7 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
 import { app } from "electron";
 import { load } from "./settings.js";
@@ -179,7 +181,7 @@ export function ensureRemoteEnv(
     try { child.kill(); } catch { /* already dead */ }
     if (spawnGeneration - lastForcedRespawn < 2) {
       // second consecutive failure — stop respawning, surface it
-      setAuthState({ status: "failed", reason: "registration-timeout" });
+      setAuthState({ status: "idle", reason: "registration-timeout" });
       return;
     }
     lastForcedRespawn = spawnGeneration;
@@ -197,6 +199,21 @@ export function ensureRemoteEnv(
   let identityTimer: ReturnType<typeof setTimeout> | null = null;
 
   const readIdentityFromLog = () => {
+    // The banner's log path can be stale/missing (stdout chunk race) — fall
+    // back to the NEWEST file in the remote logs dir; the current spawn's
+    // log is always the freshest one there.
+    if (!logPath || !existsSync(logPath)) {
+      try {
+        const dir = join(homedir(), ".letta", "logs", "remote");
+        const newest = readdirSync(dir)
+          .filter((f) => f.endsWith(".log"))
+          .map((f) => ({ f, m: statSync(join(dir, f)).mtimeMs }))
+          .sort((a, b) => b.m - a.m)[0];
+        if (newest) logPath = join(dir, newest.f);
+      } catch {
+        return;
+      }
+    }
     if (!logPath || !existsSync(logPath)) return;
     try {
       const log = readFileSync(logPath, "utf8");
