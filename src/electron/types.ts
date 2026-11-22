@@ -262,6 +262,7 @@ export type AppRequests = {
   }): string[];
   getConversationCwd(conversationId: string): string | null;
   clearBrowseCache(): void;
+  schedulesByConversation(input: { agentId: string }): Record<string, Array<{ id: string; name: string; status?: string }>>;
   listSchedules(input: { agentId: string }): Promise<import("./libs/schedules.js").CronTask[]>;
   pauseSchedule(input: { taskId: string }): Promise<void>;
   resumeSchedule(input: { taskId: string }): Promise<void>;

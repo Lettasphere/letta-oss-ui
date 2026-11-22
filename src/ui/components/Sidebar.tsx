@@ -82,6 +82,7 @@ function ConversationItem({
     (state) => state.view === "chat" && state.activeId === conversation.id,
   );
   const running = useAppStore((state) => state.chats[conversation.id]?.running ?? false);
+  const monitorSchedules = useAppStore((state) => state.monitorSchedules[conversation.id] ?? []);
   const waiting = useAppStore((state) => (state.chats[conversation.id]?.approvals.length ?? 0) > 0);
   const openChat = useAppStore((state) => state.openChat);
   const archiveConversation = useAppStore((state) => state.archiveConversation);
@@ -99,6 +100,14 @@ function ConversationItem({
           {unread && <span className="mr-1 inline-block h-2 w-2 shrink-0 rounded-full bg-accent" title="Unread" />}
           {pinned && <span className="mr-1 text-accent">★</span>}
           {conversation.title || "New chat"}
+          {monitorSchedules.length > 0 && (
+            <span
+              title={monitorSchedules.map((s) => s.name).join(", ")}
+              className="ml-1.5 inline-flex items-center rounded-full border border-accent/40 px-1.5 py-0.5 text-[10px] font-medium text-accent align-middle"
+            >
+              ● {monitorSchedules.length}
+            </span>
+          )}
         </span>
         {running ? (
           waiting ? (

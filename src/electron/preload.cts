@@ -15,6 +15,7 @@ const METHODS = [
   "listRemoteDirectory",
   "clearBrowseCache",
   "listSchedules",
+  "schedulesByConversation",
   "pauseSchedule",
   "resumeSchedule",
   "deleteSchedule",

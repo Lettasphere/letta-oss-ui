@@ -41,7 +41,7 @@ import {
 import { getAllConversationEnvs, getConversationEnv, listComputers, setConversationEnv } from "./libs/env.js";
 import { agentRailStatus } from "./libs/agent-status.js";
 import { intakeFiles } from "./libs/attachments.js";
-import { deleteSchedule, listSchedules, pauseSchedule, resumeSchedule, triggerSchedule } from "./libs/schedules.js";
+import { deleteSchedule, listSchedules, pauseSchedule, resumeSchedule, schedulesByConversation, triggerSchedule } from "./libs/schedules.js";
 import {
   clearBrowseCache,
   getDefaultDirectory,
@@ -256,6 +256,7 @@ const handlers: Handlers = {
   sendMessage,
   stopTurn,
   respondApproval,
+  schedulesByConversation: (input) => schedulesByConversation(input.agentId),
   listSchedules: (input) => listSchedules(input.agentId),
   pauseSchedule: (input) => pauseSchedule(input.taskId),
   resumeSchedule: (input) => resumeSchedule(input.taskId),
