@@ -66,6 +66,7 @@ function FolderMenu({ cwd }: { cwd: string }) {
     // freezing the chip at "Remote". Losing the race = retry next open.
     const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000));
     const resolvedRef = { done: false };
+    try {
     void Promise.race([
       window.bridge
         .getTargetFolder({ targetKey })
@@ -149,6 +150,10 @@ function FolderMenu({ cwd }: { cwd: string }) {
         retry();
       }
     });
+    } catch (fatal) {
+      console.warn("[chip] discovery chain crashed:", String(fatal).slice(0, 200));
+      setFolderResolving(false);
+    }
     return () => {
       for (const id of pendingTimers) clearTimeout(id);
     };
