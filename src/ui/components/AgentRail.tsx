@@ -213,8 +213,9 @@ export function AgentRail() {
   for (const agent of agents) {
     if (agent.id === agentId) continue; // selected: chat state covers it
     const at = agentActivity[agent.id] ?? 0;
-    const read = agentReadFloors[agent.id] ?? 0;
-    if (at > now - 90_000 && at > read) workingAgents.add(agent.id);
+    // Recency ALONE — read-state suppression made live gate reviews
+    // invisible exactly when watched (Harry could not see Uncia working).
+    if (at > now - 90_000) workingAgents.add(agent.id);
   }
 
   if (agents.length === 0) return null;
