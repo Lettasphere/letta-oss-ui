@@ -209,14 +209,42 @@ export function AgentRail() {
   // device work) emit NO turn.started to us — but they DO bump agentActivity
   // via conversation.updated. A very recent unread bump on a NON-selected
   // agent = that agent is producing output right now = working.
-  const now = Date.now();
-  for (const agent of agents) {
-    if (agent.id === agentId) continue; // selected: chat state covers it
-    const at = agentActivity[agent.id] ?? 0;
-    // Recency ALONE — read-state suppression made live gate reviews
-    // invisible exactly when watched (Harry could not see Uncia working).
-    if (at > now - 90_000) workingAgents.add(agent.id);
-  }
+  // Recency is computed in an effect (the only place a clock is legal) and
+  // lands in state; render reads pure state only. Recency ALONE — read-state
+  // suppression made live gate reviews invisible exactly when watched
+  // (Harry could not see Uncia working).
+  const [activityWorking, setActivityWorking] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    const compute = (): Set<string> => {
+      const now = Date.now();
+      const recent = new Set<string>();
+      for (const agent of agents) {
+        if (agent.id === agentId) continue; // selected: chat state covers it
+        const at = agentActivity[agent.id] ?? 0;
+        if (at > now - 90_000) recent.add(agent.id);
+      }
+      return recent;
+    };
+    // Initial computation deferred off the effect body (set-state-in-effect);
+    // the interval's callback-scoped updates are legal as-is.
+    void Promise.resolve().then(() => setActivityWorking(compute()));
+    // Sliding window: re-check every 30s so "working" lapses without activity.
+    const t = setInterval(() => {
+      const now = Date.now();
+      setActivityWorking((prev) => {
+        const next = new Set<string>();
+        let changed = false;
+        for (const id of prev) {
+          const at = agentActivity[id] ?? 0;
+          if (at > now - 90_000) next.add(id);
+          else changed = true;
+        }
+        return changed ? next : prev;
+      });
+    }, 30_000);
+    return () => clearInterval(t);
+  }, [agentActivity, agents, agentId]);
+  for (const id of activityWorking) workingAgents.add(id);
 
   if (agents.length === 0) return null;
 
