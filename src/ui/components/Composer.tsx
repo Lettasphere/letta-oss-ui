@@ -59,9 +59,13 @@ function FolderMenu({ cwd }: { cwd: string }) {
       return id;
     }) as typeof setTimeout;
     // Target changed: clear immediately — never show the previous target's
-    // folder while this one resolves.
-    setTargetFolder(null);
-    setFolderResolving(true);
+    // folder while this one resolves. Deferred to a microtask: the reset is
+    // not render-critical (a chip label mid-resolution), and calling setState
+    // synchronously in the effect body cascades renders (react-hooks/set-state-in-effect).
+    void Promise.resolve().then(() => {
+      setTargetFolder(null);
+      setFolderResolving(true);
+    });
     // 10s timeout: a websocket to a dead lease can hang the chain forever,
     // freezing the chip at "Remote". Losing the race = retry next open.
     const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000));
@@ -155,7 +159,7 @@ function FolderMenu({ cwd }: { cwd: string }) {
     });
     } catch (fatal) {
       console.warn("[chip] discovery chain crashed:", String(fatal).slice(0, 200));
-      setFolderResolving(false);
+      void Promise.resolve().then(() => setFolderResolving(false));
     }
     return () => {
       for (const id of pendingTimers) clearTimeout(id);
@@ -289,7 +293,9 @@ function MonitorBar() {
 
   useEffect(() => {
     if (!activeId) {
-      setMonitors([]);
+      // Reset deferred off the effect body (set-state-in-effect): the empty
+      // list is the fallback display, not render-critical.
+      void Promise.resolve().then(() => setMonitors([]));
       return;
     }
     let cancelled = false;

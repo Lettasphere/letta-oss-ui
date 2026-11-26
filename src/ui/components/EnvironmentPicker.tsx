@@ -69,7 +69,6 @@ export function EnvironmentPicker() {
       clearInterval(timer);
       clearTimeout(stop);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, ownRemote?.running, ownRemote?.effectiveName]);
 
   useEffect(() => {

@@ -6,7 +6,7 @@ import {
   shell,
   type MenuItemConstructorOptions,
 } from "electron";
-import { execFileSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { join } from "node:path";
 import { broadcast, registerIpc } from "./ipc.js";
 import { disconnect, initRuntime } from "./libs/runtime.js";
@@ -110,8 +110,7 @@ function buildMenu(): Menu {
  *  ("v0.2.0" forever) is undetectable without it. */
 function buildTitle(): string {
   try {
-    const sha = require("node:child_process")
-      .execSync("git rev-parse --short HEAD", { cwd: app.getAppPath() })
+    const sha = execSync("git rev-parse --short HEAD", { cwd: app.getAppPath() })
       .toString()
       .trim();
     return `OSS-UI v${app.getVersion()} (${sha})`;
@@ -192,13 +191,13 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.on("will-quit", () => {
-  // Adopted (external) registrations survive the app; owned ones die with it.
-  try {
-    require("./libs/remote-env.js").shutdownAdoption();
-  } catch {
-    // module not loaded — nothing to stop
-  }
-});
+    // Adopted (external) registrations survive the app; owned ones die with it.
+    void import("./libs/remote-env.js")
+      .then((m) => m.shutdownAdoption())
+      .catch(() => {
+        // module not loaded — nothing to stop
+      });
+  });
 
 app.on("window-all-closed", () => {
     if (!isMac) app.quit();
@@ -215,7 +214,9 @@ app.on("window-all-closed", () => {
       // app.exit() does NOT emit will-quit — stop the registration here or
       // the spawned letta server orphans and the machine stays routable
       // while the app is closed (Uncia finding 1).
+      // app.exit() does not wait for dynamic imports — best-effort stop.
       try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports -- app.exit() below cannot await a dynamic import; require is the only synchronous path
         require("./libs/remote-env.js").shutdownAdoption();
       } catch {
         // module not loaded — nothing to stop

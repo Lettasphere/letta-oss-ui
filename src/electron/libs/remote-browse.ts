@@ -156,11 +156,10 @@ async function sandboxTransport(): Promise<RawClient> {
     // The real cause (e.g. 403 cloud-credits-exhausted) must reach the chip —
     // the generic "did not come up" hid an actionable message for days.
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      message.includes("credits")
-        ? "Cloud sandbox needs credits (chat.letta.com/preferences/usage) — pick a machine target or add credits."
-        : `Sandbox session failed: ${message}`,
-    );
+    const symptom = message.includes("credits")
+      ? "Cloud sandbox needs credits (chat.letta.com/preferences/usage) — pick a machine target or add credits."
+      : `Sandbox session failed: ${message}`;
+    throw new Error(symptom, { cause: error });
   }
   sandboxSession = session;
   const transport = ((session as { controller?: { client?: RawClient } }).controller ?? {})
@@ -208,7 +207,7 @@ export async function getDefaultDirectory(
 ): Promise<string> {
   // "remote-default": the app's remote-env mode target — this machine's own
   // registration (the spawn the runtime owns). Resolves via its connection.
-  let effectiveSelector: ComputerSelector | null = null;
+  let effectiveSelector: ComputerSelector | null;
   if (selector === "remote-default") {
     // This machine's LIVE registration: the adopted external one when the
     // app is adopting (remoteEnvState is the OWNED spawn — null while

@@ -53,6 +53,9 @@ function SettingsForm({ settings, onClose }: { settings: AppSettings; onClose: (
   const connection = useAppStore((state) => state.connection);
   const saveSettings = useAppStore((state) => state.saveSettings);
   const reconnect = useAppStore((state) => state.reconnect);
+  // Re-fetch settings-derived state when the dialog (re)opens — the ghost
+  // `open` dep referenced the outer component's binding (invalid dep).
+  const settingsOpen = useAppStore((state) => state.settingsOpen);
 
   const [backend, setBackend] = useState(settings.backend);
   const [mode, setMode] = useState<"local" | "remote-env" | "cloud-only">("local");
@@ -62,12 +65,12 @@ function SettingsForm({ settings, onClose }: { settings: AppSettings; onClose: (
 
   useEffect(() => {
     void window.bridge.getRemoteEnvName().then(setEnvName);
-  }, [open]);
+  }, [settingsOpen]);
 
   useEffect(() => {
     void window.bridge.getExecutionMode().then((m) => setMode(m));
     void window.bridge.getRemoteEnvStatus().then(setRemoteEnv);
-  }, [open]);
+  }, [settingsOpen]);
   const [apiKey, setApiKey] = useState("");
   const [apiBaseUrl, setApiBaseUrl] = useState(settings.apiBaseUrl);
   const [serverUrl, setServerUrl] = useState(settings.serverUrl);
@@ -113,7 +116,7 @@ function SettingsForm({ settings, onClose }: { settings: AppSettings; onClose: (
 
   useEffect(() => {
     void api.listSavedConnections().then(setSavedConnections);
-  }, [open]);
+  }, [settingsOpen]);
 
   const persistConnection = async (name: string) => {
     setSavedConnections(await api.saveCurrentConnection(name));
