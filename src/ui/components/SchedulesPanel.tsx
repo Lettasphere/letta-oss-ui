@@ -46,7 +46,10 @@ export function SchedulesPanel() {
   }, []);
 
   useEffect(() => {
-    void load();
+    // Deferred off the effect body: load()'s first synchronous hop calls
+    // setState (setError), which the set-state-in-effect rule cascades.
+    const t = setTimeout(() => void load(), 0);
+    return () => clearTimeout(t);
   }, [load]);
 
   const act = async (taskId: string, op: "pause" | "resume" | "trigger", name: string) => {
