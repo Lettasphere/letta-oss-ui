@@ -228,8 +228,47 @@ async function connect(): Promise<LettaAgentClient> {
   }
 }
 
+/**
+ * Cached-client liveness probe. The env sockets got ping-guard + TTL +
+ * close-eviction (Nov); the MAIN client had NOTHING: its websocket can die
+ * silently mid-session (NAT idle-kill, network blip — keepalive holds the
+ * socket object, no close event), `client` stays cached, and every
+ * computers.resolve() hangs forever. First symptom: the folder chip stops
+ * resolving "after a few conversation switches" (never on launch — launch
+ * builds a fresh client). Discovery retries 5× against the same dead client.
+ *
+ * Probe: agents.list(limit 1) — the same cheap request connect() uses to
+ * prove reachability. 5s cap. Dead → close + null + reconnect (with the
+ * existing retry/backoff). Concurrent callers share one probe flight.
+ */
+let probing: Promise<LettaAgentClient> | null = null;
+
+function probeClient(c: LettaAgentClient): Promise<boolean> {
+  return Promise.race([
+    c.agents.list({ limit: 1 }).then(() => true, () => false),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 5_000)),
+  ]);
+}
+
+async function ensureClientLive(): Promise<LettaAgentClient> {
+  const cached = client;
+  if (!cached) return connectWithRetry();
+  if (await probeClient(cached)) return cached;
+  // Dead: evict and rebuild. close() on an already-dead socket is caught.
+  console.warn("[client] main client failed liveness probe — reconnecting");
+  await cached.close().catch(() => undefined);
+  if (client === cached) client = null;
+  return connectWithRetry();
+}
+
 function ensureClient(): Promise<LettaAgentClient> {
-  if (client) return Promise.resolve(client);
+  if (client && !probing) {
+    probing = ensureClientLive().finally(() => {
+      probing = null;
+    });
+    return probing;
+  }
+  if (probing) return probing;
   connecting ??= connectWithRetry().finally(() => {
     connecting = null;
   });
