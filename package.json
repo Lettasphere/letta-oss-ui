@@ -2,7 +2,7 @@
   "name": "letta-oss-ui",
   "productName": "OSS-UI",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Desktop app for working with Letta agents",
   "author": "Letta",
   "license": "Apache-2.0",
