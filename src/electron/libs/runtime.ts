@@ -63,10 +63,28 @@ type Turn = {
   flushTimer: NodeJS.Timeout | null;
   stopped: boolean;
   finished: boolean;
+  /** Wall-clock of the last stream event — the zombie-watchdog's input.
+   *  A turn producing NOTHING for STALL_MS is a wedged stream, not work. */
+  lastEventAt: number;
 };
 
 const ROW_FLUSH_MS = 40;
 const STOP_GRACE_MS = 5_000;
+/**
+ * Zombie-turn watchdog: a turn with NO stream event for this long is a wedged
+ * stream (silent socket death, keepalive holding the for-await open, server
+ * never sending result). Without the sweep such a turn leaks forever in the
+ * `turns` map — loadHistory re-reports running=true on every open, the rail
+ * pulses "Working" from the stale turn.started, and the ONLY cure was the
+ * stop button on a conversation the user isn't looking at.
+ *
+ * 5 minutes: tool calls legitimately take minutes (gradle, CI, long agents);
+ * 5min of ZERO stream events (not even loop_status/heartbeat rows) is not
+ * work-in-progress, it's death. Uncia-adversarial reviewed Nov 27.
+ */
+const TURN_STALL_MS = 5 * 60_000;
+/** Watchdog interval — sweeps the turns map for stalled entries. */
+const TURN_STALL_SWEEP_MS = 60_000;
 const TITLE_MAX_CHARS = 60;
 
 const ACTIVITY: Record<string, string | null> = {
@@ -648,6 +666,7 @@ async function runTurn(
 
     for await (const message of turn.session.stream()) {
       if (turn.finished) return;
+      turn.lastEventAt = Date.now();
       switch (message.type) {
         case "error":
           failure = describeError(message.errorDetail ?? message.message);
@@ -741,6 +760,7 @@ export async function sendMessage(input: SendMessageInput): Promise<Conversation
     flushTimer: null,
     stopped: false,
     finished: false,
+    lastEventAt: Date.now(),
     session: sdk.resumeSession(conversation.id, {
       cwd: input.cwd,
       permissionMode: getPermissionMode(),
@@ -780,6 +800,22 @@ export async function sendMessage(input: SendMessageInput): Promise<Conversation
 
   return conversation;
 }
+
+/**
+ * Zombie-turn watchdog: sweep the turns map, finish any turn with NO stream
+ * event for TURN_STALL_MS. finishTurn's guards (finished/stopped) make the
+ * sweep idempotent; a turn already finished legitimately is invisible to it.
+ * Started once at module scope (the runtime's lifetime); .unref() so it never
+ * holds the process open.
+ */
+setInterval(() => {
+  const now = Date.now();
+  for (const turn of turns.values()) {
+    if (turn.finished || turn.stopped) continue;
+    if (now - turn.lastEventAt < TURN_STALL_MS) continue;
+    finishTurn(turn, "Stream stalled — no events for 5 minutes (auto-recovered).");
+  }
+}, TURN_STALL_SWEEP_MS).unref();
 
 export async function stopTurn(conversationId: string): Promise<void> {
   const turn = turns.get(conversationId);
