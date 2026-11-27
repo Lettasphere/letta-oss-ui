@@ -450,7 +450,7 @@ export async function adoptOrSpawn(
       const online = rows.filter(
         (row) => row.deviceId === deviceId && row.status === "online" && row.connectionId,
       );
-      const external = online.find((row) => !row.name.startsWith("oss-ui@"));
+      const external = online.find((row) => !row.name.startsWith("lettasphere-desktop@"));
       if (external) {
         setAdopted({
           kind: "adopted",
@@ -498,7 +498,7 @@ function startWatch(
               row.status === "online" &&
               row.connectionId &&
               row.deviceId === myDevice &&
-              !row.name.startsWith("oss-ui@") &&
+              !row.name.startsWith("lettasphere-desktop@") &&
               row.connectionId !== ownedConnectionId,
           );
           if (external) {
