@@ -1,6 +1,6 @@
 <div align="center">
 
-# OSS-UI
+# Lettasphere Desktop
 
 **An open-source desktop app for Letta agents.**
 
@@ -13,14 +13,14 @@ The agent remembers what it learns across every chat.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/chat-dark.png">
-  <img src="docs/images/chat-light.png" alt="An OSS-UI chat. The agent reads four files, then answers with a table of the TODO comments it found." width="900">
+  <img src="docs/images/chat-light.png" alt="A Lettasphere Desktop chat. The agent reads four files, then answers with a table of the TODO comments it found." width="900">
 </picture>
 
 </div>
 
 ## What it does
 
-OSS-UI is a desktop app for [stateful agents](https://docs.letta.com/concepts/stateful-agents), built on the [Letta Agent SDK](https://docs.letta.com/agent-sdk).
+Lettasphere Desktop is a desktop app for [stateful agents](https://docs.letta.com/concepts/stateful-agents), built on the [Letta Agent SDK](https://docs.letta.com/agent-sdk).
 
 - **Agents on your machine.** By default, agents and their memory are stored on your computer. You do not need an account.
 - **Three backends.** Use the local runtime, Letta Cloud, or a Letta app server that you host.
@@ -160,6 +160,6 @@ npm view @letta-ai/letta-agent-sdk@<version> dependencies
 
 ## License
 
-OSS-UI is licensed under the [Apache License 2.0](LICENSE).
+Lettasphere Desktop is licensed under the [Apache License 2.0](LICENSE).
 
 It began as a fork of [Open-Claude-Cowork](https://github.com/DevAgentForge/Open-Claude-Cowork) and replaces the Claude SDK with [`@letta-ai/letta-agent-sdk`](https://www.npmjs.com/package/@letta-ai/letta-agent-sdk). See [NOTICE](NOTICE).

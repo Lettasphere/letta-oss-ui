@@ -178,7 +178,7 @@ function SettingsForm({ settings, onClose }: { settings: AppSettings; onClose: (
             <input
               value={envName}
               onChange={(event) => setEnvName(event.target.value)}
-              placeholder="defaults to oss-ui@<hostname>"
+              placeholder="defaults to lettasphere-desktop@<hostname>"
               className="field font-mono"
             />
             <span className="self-center text-xs text-muted">applied when you Save</span>

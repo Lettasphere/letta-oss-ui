@@ -60,7 +60,7 @@ describe("writeMemoryFile", () => {
     await memory.writeMemoryFile("agent-1", "  notes.md ", "hello");
     expect(sent().at(-1)).toEqual([
       "write_memory_file",
-      { agent_id: "agent-1", path: "notes.md", content: "hello", commit_message: "Edit notes.md in OSS-UI" },
+      { agent_id: "agent-1", path: "notes.md", content: "hello", commit_message: "Edit notes.md in Lettasphere Desktop" },
     ]);
   });
 
@@ -116,7 +116,7 @@ describe("deleteMemoryFile", () => {
     await memory.deleteMemoryFile("agent-1", "notes.md");
     expect(sent().at(-1)).toEqual([
       "delete_memory_file",
-      { agent_id: "agent-1", path: "notes.md", commit_message: "Delete notes.md in OSS-UI" },
+      { agent_id: "agent-1", path: "notes.md", commit_message: "Delete notes.md in Lettasphere Desktop" },
     ]);
   });
 

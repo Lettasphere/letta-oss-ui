@@ -325,14 +325,14 @@ function hostname(): string {
   try {
     return require("node:os").hostname();
   } catch {
-    return "oss-ui";
+    return "lettasphere-desktop";
   }
 }
 
 /** Registration name used when the user leaves the field blank — concrete and
  * distinct from the machine's primary registration so pickers stay readable. */
 export function defaultRemoteEnvName(): string {
-  return `oss-ui@${hostname()}`;
+  return `lettasphere-desktop@${hostname()}`;
 }
 
 /** Stop the registration this app started. Called on app quit and when the
@@ -364,7 +364,7 @@ export function stopRemoteEnv(): void {
  * machine's deviceId (e.g. the user's own `letta server`), the app adopts it
  * (displays it, routes to it, NEVER kills it). A websocket watch + heartbeat
  * detect its death; on death the app immediately spawns its own
- * oss-ui@<hostname> registration and surfaces the new identity.
+ * lettasphere-desktop@<hostname> registration and surfaces the new identity.
  */
 
 export type AdoptedState =
@@ -450,7 +450,7 @@ export async function adoptOrSpawn(
       const online = rows.filter(
         (row) => row.deviceId === deviceId && row.status === "online" && row.connectionId,
       );
-      const external = online.find((row) => !row.name.startsWith("oss-ui@"));
+      const external = online.find((row) => !row.name.startsWith("lettasphere-desktop@"));
       if (external) {
         setAdopted({
           kind: "adopted",
@@ -498,7 +498,7 @@ function startWatch(
               row.status === "online" &&
               row.connectionId &&
               row.deviceId === myDevice &&
-              !row.name.startsWith("oss-ui@") &&
+              !row.name.startsWith("lettasphere-desktop@") &&
               row.connectionId !== ownedConnectionId,
           );
           if (external) {
