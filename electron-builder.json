@@ -1,6 +1,6 @@
 {
     "appId": "com.letta.oss-ui",
-    "productName": "OSS-UI",
+    "productName": "Lettasphere Desktop",
     "files": [
         "dist-electron",
         "dist-react",

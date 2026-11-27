@@ -1,6 +1,6 @@
 <div align="center">
 
-# OSS-UI
+# Lettasphere Desktop
 
 **An open-source desktop app for Letta agents.**
 
@@ -20,7 +20,7 @@ The agent remembers what it learns across every chat.
 
 ## What it does
 
-OSS-UI is a desktop app for [stateful agents](https://docs.letta.com/concepts/stateful-agents), built on the [Letta Agent SDK](https://docs.letta.com/agent-sdk).
+Lettasphere Desktop is a desktop app for [stateful agents](https://docs.letta.com/concepts/stateful-agents), built on the [Letta Agent SDK](https://docs.letta.com/agent-sdk).
 
 - **Agents on your machine.** By default, agents and their memory are stored on your computer. You do not need an account.
 - **Three backends.** Use the local runtime, Letta Cloud, or a Letta app server that you host.

@@ -113,9 +113,9 @@ function buildTitle(): string {
     const sha = execSync("git rev-parse --short HEAD", { cwd: app.getAppPath() })
       .toString()
       .trim();
-    return `OSS-UI v${app.getVersion()} (${sha})`;
+    return `Lettasphere Desktop v${app.getVersion()} (${sha})`;
   } catch {
-    return `OSS-UI v${app.getVersion()}`;
+    return `Lettasphere Desktop v${app.getVersion()}`;
   }
 }
 
