@@ -728,9 +728,30 @@ export const useAppStore = create<AppState>((set, get) => ({
     const otid = crypto.randomUUID();
     const userRow = optimisticUserRow(text, otid);
     const cwd = selectCwd(state, key);
+    // Effort lookup hoisted: the model-dedupe decision (below) reads it —
+    // effort + model must bind at the same session call.
+    // The SDK rejects "max" (validator Set, 0.8.32–0.8.90) AND "xhigh" has no
+    // glm catalog row (tier resolution fails server-side). Only tiers present
+    // in BOTH the catalog capabilities and the SDK Set are sendable; the menu
+    // filters to those. "Auto" (no effort pick) sends the model's default
+    // (glm: the max row) through the no-reasoningEffort path — the honest way
+    // to run glm at full reasoning today.
+    let pickedEffort = key in state.effortOverrides ? state.effortOverrides[key] : undefined;
+    if (pickedEffort === "max") pickedEffort = undefined;
     const pickedModel = state.modelOverrides[key];
     const currentModel = state.conversations.find((item) => item.id === activeId)?.model;
-    const model = pickedModel && pickedModel !== currentModel ? pickedModel : undefined;
+    // Model dedupe ("picked == conversation's model ⇒ omit") is UNSAFE when an
+    // effort rides the same send: the SDK resolves reasoningEffort against the
+    // SESSION's currentModel, which can be an older binding than the
+    // conversation row shows (the session-override doesn't always persist to
+    // the conversation object; a reverted row + effort pick = "No xhigh
+    // reasoning tier found for model zai/glm-5.3" while the user picked terra
+    // — Harry, Nov 27). When both a model and an effort are picked, bind the
+    // model explicitly so effort resolution targets the picked model.
+    const model =
+      pickedModel && (pickedModel !== currentModel || pickedEffort !== undefined)
+        ? pickedModel
+        : undefined;
 
     const clearComposer = (id: string) => (current: AppState) => {
       const drafts = { ...current.drafts };
@@ -765,14 +786,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const pickedEnv =
       key in state.envOverrides ? state.envOverrides[key] : undefined;
-    let pickedEffort = key in state.effortOverrides ? state.effortOverrides[key] : undefined;
-    // The SDK rejects "max" (validator Set, 0.8.32–0.8.90) AND "xhigh" has no
-    // glm catalog row (tier resolution fails server-side). Only tiers present
-    // in BOTH the catalog capabilities and the SDK Set are sendable; the menu
-    // filters to those. "Auto" (no effort pick) sends the model's default
-    // (glm: the max row) through the no-reasoningEffort path — the honest way
-    // to run glm at full reasoning today.
-    if (pickedEffort === "max") pickedEffort = undefined;
       const conversation = await api.sendMessage({
         agentId,
         conversationId: activeId,

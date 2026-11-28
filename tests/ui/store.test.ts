@@ -399,3 +399,63 @@ describe("agents", () => {
     expect(state().agents.find((agent) => agent.id === "agent-2")?.name).toBe("Renamed");
   });
 });
+
+describe("send: model binds with effort (regression: xhigh-vs-old-model)", () => {
+  // Harry Nov 27: picked chatgpt-6.1-terra + xhigh; error named zai/glm-5.3 —
+  // the SDK resolved the effort against the SESSION's stale currentModel
+  // because the send omitted the model (dedupe: picked === conversation row).
+  // The conversation row's model can be stale/reverted relative to the
+  // session binding, so effort MUST carry the model explicitly.
+  it("sends the model when an effort is picked even if picked === conversation model", async () => {
+    const terra = conversation("conv-1");
+    terra.model = "openai/chatgpt-6.1-terra";
+    bridge.listConversations.mockResolvedValue([terra]);
+    bridge.sendMessage.mockResolvedValue(terra);
+    await connect();
+    useAppStore.setState({
+      agentId: "agent-2",
+      conversations: [terra],
+      conversationsLoaded: true,
+      conversationsLoading: false,
+      activeId: "conv-1",
+      modelOverrides: { "conv-1": "openai/chatgpt-6.1-terra" },
+      effortOverrides: { "conv-1": "xhigh" },
+      chats: {},
+    });
+    await useAppStore.getState().send("hello");
+    await flush();
+    const sent = (bridge.sendMessage as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as
+      | { model?: string; reasoningEffort?: string }
+      | undefined;
+    expect(sent).toBeTruthy();
+    // THE assertion: model present AND effort present in the same call.
+    expect(sent!.model).toBe("openai/chatgpt-6.1-terra");
+    expect(sent!.reasoningEffort).toBe("xhigh");
+  });
+
+  it("omits the model when no effort is picked and picked === conversation model (dedupe preserved)", async () => {
+    const terra = conversation("conv-1");
+    terra.model = "openai/chatgpt-6.1-terra";
+    bridge.listConversations.mockResolvedValue([terra]);
+    bridge.sendMessage.mockResolvedValue(terra);
+    await connect();
+    useAppStore.setState({
+      agentId: "agent-2",
+      conversations: [terra],
+      conversationsLoaded: true,
+      conversationsLoading: false,
+      activeId: "conv-1",
+      modelOverrides: { "conv-1": "openai/chatgpt-6.1-terra" },
+      effortOverrides: {},
+      chats: {},
+    });
+    await useAppStore.getState().send("hello");
+    await flush();
+    const sent = (bridge.sendMessage as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as
+      | { model?: string; reasoningEffort?: string }
+      | undefined;
+    expect(sent).toBeTruthy();
+    expect(sent!.model).toBeUndefined();
+    expect(sent!.reasoningEffort).toBeUndefined();
+  });
+});
