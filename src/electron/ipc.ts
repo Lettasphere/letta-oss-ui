@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain, Notification, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from "electron";
 import type { AppEvent, AppRequests } from "./types.js";
 import {
   applyPermissionMode,
@@ -40,6 +40,12 @@ import {
 } from "./libs/settings.js";
 import { getAllConversationEnvs, getConversationEnv, listComputers, setConversationEnv } from "./libs/env.js";
 import { agentRailStatus } from "./libs/agent-status.js";
+import {
+  dismissUpdateBanner,
+  getUpdateSnapshot,
+  manualCheck,
+  openReleasePage,
+} from "./libs/update-checker.js";
 import { listMonitors } from "./libs/monitors.js";
 import { intakeFiles } from "./libs/attachments.js";
 import { deleteSchedule, listSchedules, pauseSchedule, resumeSchedule, schedulesByConversation, triggerSchedule } from "./libs/schedules.js";
@@ -204,6 +210,11 @@ const handlers: Handlers = {
     if (input.url && /^https:\/\//.test(input.url)) void shell.openExternal(input.url);
     return true;
   },
+  getUpdateSnapshot: () => getUpdateSnapshot(),
+  getAppVersion: () => app.getVersion(),
+  checkForUpdates: async () => manualCheck(),
+  dismissUpdateBanner: () => dismissUpdateBanner(),
+  openReleasePage: () => openReleasePage(),
   adoptRemoteEnv: async () => {
     const { getConnectionConfig } = await import("./libs/settings.js");
     const config = getConnectionConfig();

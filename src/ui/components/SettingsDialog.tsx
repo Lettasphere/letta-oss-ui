@@ -3,12 +3,14 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useAppStore, type SettingsTab } from "../store";
 import type { AppSettings, BackendKind, SavedConnection, SettingsUpdate } from "../types";
 import { ProvidersPanel } from "./ProvidersPanel";
+import { UpdateSection } from "./UpdateSection";
 
 import { CloseIcon, Spinner } from "./icons";
 
 const TABS: Array<{ id: SettingsTab; label: string }> = [
   { id: "connection", label: "Connection" },
   { id: "providers", label: "Model providers" },
+  { id: "updates", label: "Updates" },
 ];
 
 const api = window.bridge;
@@ -416,6 +418,7 @@ export function SettingsDialog() {
             <SettingsForm settings={settings} onClose={() => setSettingsOpen(false)} />
           )}
           {open && tab === "providers" && <ProvidersPanel />}
+          {open && tab === "updates" && <UpdateSection />}
 
         </Dialog.Content>
       </Dialog.Portal>

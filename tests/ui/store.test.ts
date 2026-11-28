@@ -114,6 +114,14 @@ function createBridge() {
     agentRailStatus: vi.fn().mockResolvedValue({ agentId: "", latestAt: null, latestConversationId: null }),
     schedulesByConversation: vi.fn().mockResolvedValue({}),
     listMonitors: vi.fn().mockResolvedValue([]),
+    getAppVersion: vi.fn().mockReturnValue("0.3.0"),
+    getUpdateSnapshot: vi.fn().mockReturnValue({
+      seq: 0, state: "unsupported", version: null, releaseUrl: null,
+      lastAttemptAt: null, lastSuccessfulCheckAt: null, lastCheckError: null, dismissedFor: null,
+    }),
+    checkForUpdates: vi.fn().mockResolvedValue(null),
+    dismissUpdateBanner: vi.fn().mockReturnThis(),
+    openReleasePage: vi.fn().mockResolvedValue(false),
   } satisfies Record<keyof AppBridge, unknown>;
 }
 

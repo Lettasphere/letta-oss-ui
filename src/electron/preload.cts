@@ -72,6 +72,11 @@ const METHODS = [
   "stopTurn",
   "respondApproval",
   "selectDirectory",
+  "getUpdateSnapshot",
+  "getAppVersion",
+  "checkForUpdates",
+  "dismissUpdateBanner",
+  "openReleasePage",
 ] as const satisfies readonly (keyof AppRequests)[];
 
 // Fails to compile if a request is added to AppRequests but not listed above.

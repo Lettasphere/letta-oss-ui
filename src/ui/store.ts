@@ -84,7 +84,7 @@ export type MemoryState = {
   files: MemoryFile[];
 };
 
-export type SettingsTab = "connection" | "providers";
+export type SettingsTab = "connection" | "providers" | "updates";
 
 const EMPTY_CHAT: ChatState = {
   rows: [],
@@ -131,6 +131,12 @@ type AppState = {
   agentActivity: Record<string, number>;
   /** conversationId -> attached schedules (the monitor badge source). */
   monitorSchedules: Record<string, Array<{ id: string; name: string; status?: string }>>;
+  /**
+   * Update-checker state (Phase 1, manual browser flow). Main-process owned;
+   * the renderer is a pure view. Subscribe-first: events carry the full
+   * snapshot; stale events are discarded by seq in the handler.
+   */
+  update: import("../electron/types.js").UpdateSnapshot;
   /** Handover lifecycle: disconnect detected → switching → stable. */
   remoteHandover: { phase: "stable" } | { phase: "switching"; since: number; reason: string };
   /** Live adoption state (owned vs adopted registration) — event-driven. */
@@ -260,6 +266,12 @@ function upsertConversation(
 }
 
 const CLEARED = {
+  // Update state survives connection wipes: the checker's lifecycle is the
+  // APP process, not the Letta connection (main-process owned).
+  update: {
+    seq: -1, state: "idle", version: null, releaseUrl: null,
+    lastAttemptAt: null, lastSuccessfulCheckAt: null, lastCheckError: null, dismissedFor: null,
+  },
   agents: [],
   agentsLoaded: false,
   agentId: null,
@@ -492,6 +504,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
         break;
       }
+      case "update.state":
+        // Subscribe-first protocol (v2r4): discard any event whose seq
+        // doesn't advance the highest seen — late/stale broadcasts are no-ops.
+        if (event.snapshot.seq > get().update.seq) {
+          set({ update: event.snapshot });
+        }
+        return;
       case "menu":
         if (event.command === "new-chat") get().openChat(null);
         else get().openSettings("connection");
