@@ -2,7 +2,7 @@
   "name": "letta-oss-ui",
   "productName": "Lettasphere Desktop",
   "private": true,
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Desktop app for working with Letta agents",
   "author": "Letta",
   "license": "Apache-2.0",
