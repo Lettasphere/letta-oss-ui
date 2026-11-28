@@ -12,8 +12,9 @@ import { describe, expect, it } from "vitest";
 const TAG_RE = /^v\d+\.\d+\.\d+$/;
 
 function versionSegments(tag: string): number[] | null {
-  if (!TAG_RE.test(tag)) return null;
-  return tag.slice(1).split(".").map(Number);
+  const body = tag.startsWith("v") ? tag.slice(1) : tag;
+  if (!/^\d+\.\d+\.\d+$/.test(body)) return null;
+  return body.split(".").map(Number);
 }
 
 function isNewer(candidate: string, installed: string): boolean {
@@ -137,5 +138,29 @@ describe("update-checker: no-prior no-attempt is idle, not error", () => {
   it("idle before any check", () => {
     const after = derive(null, { error: null, at: Date.now() }, "v0.4.0");
     expect(after.state).toBe("idle");
+  });
+});
+
+
+describe("update-checker: installed-version parsing (Harry Nov 28 regression)", () => {
+  // THE BUG: app.getVersion() returns "0.3.1" (no v prefix — from
+  // package.json); the v1 code applied the v-required TAG regex to BOTH
+  // sides, so the installed version parsed null and every release read
+  // "up to date" while 0.3.2 was live.
+  it("parses installed versions without the v prefix", () => {
+    expect(versionSegments("0.3.1")).toEqual([0, 3, 1]);
+  });
+  it("parses release tags with the v prefix", () => {
+    expect(versionSegments("v0.3.2")).toEqual([0, 3, 2]);
+  });
+  it("the exact failure: v0.3.2 IS newer than installed 0.3.1", () => {
+    expect(isNewer("v0.3.2", "0.3.1")).toBe(true);
+  });
+  it("equal without prefix is not newer", () => {
+    expect(isNewer("v0.3.1", "0.3.1")).toBe(false);
+  });
+  it("malformed still parses null", () => {
+    expect(versionSegments("garbage")).toBeNull();
+    expect(versionSegments("0.3")).toBeNull();
   });
 });

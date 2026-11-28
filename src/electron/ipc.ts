@@ -41,6 +41,7 @@ import {
 import { getAllConversationEnvs, getConversationEnv, listComputers, setConversationEnv } from "./libs/env.js";
 import { agentRailStatus } from "./libs/agent-status.js";
 import {
+  checkOnNavigation,
   dismissUpdateBanner,
   getUpdateSnapshot,
   manualCheck,
@@ -213,6 +214,9 @@ const handlers: Handlers = {
   getUpdateSnapshot: () => getUpdateSnapshot(),
   getAppVersion: () => app.getVersion(),
   checkForUpdates: async () => manualCheck(),
+  checkForUpdatesOnNavigation: () => {
+    checkOnNavigation();
+  },
   dismissUpdateBanner: () => dismissUpdateBanner(),
   openReleasePage: () => openReleasePage(),
   adoptRemoteEnv: async () => {
