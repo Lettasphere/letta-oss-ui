@@ -162,6 +162,12 @@ async function performCheck(): Promise<void> {
   const installed = app.getVersion();
   const attemptAt = Date.now();
   const token = { token: 0 };
+  // performCheck OWNS the flight slot: the late-completion guard compares
+  // against THIS token (the last write). startCheck's wrapper clears the
+  // slot when performCheck settles — single owner, reliable cleanup. (The
+  // v1 wrapper minted a second token that this line immediately replaced:
+  // the cleanup compared the wrong token — dead code — flight leaked, and
+  // every check after the first silently no-opped. Uncia #29 finding.)
   flight = token;
 
   mutate({ state: "checking" });
@@ -218,12 +224,6 @@ async function performCheck(): Promise<void> {
   mutate({ ...derived, retryNotBefore: error ? Date.now() + backoff : Date.now() });
 }
 
-/** Single-flight check entry: dedupes concurrent callers. */
-async function check(flightToken: { token: number }): Promise<void> {
-  await performCheck();
-  void flightToken;
-}
-
 export function initUpdateChecker(emitter: (event: AppEvent) => void): void {
   emit = emitter;
   initialized = true;
@@ -256,13 +256,17 @@ export async function manualCheck(): Promise<UpdateSnapshot> {
 }
 
 async function startCheck(): Promise<void> {
-  if (flight) return; // single-flight: in-flight check owns the mutation
-  const token = { token: 0 };
-  flight = token;
+  // Single-flight: an in-flight check owns the mutation slot. performCheck
+  // assigns the token (last write wins); the wrapper's finally clears the
+  // slot unconditionally when performCheck settles — single owner, reliable
+  // cleanup. No second token: the v1 wrapper's own token made the cleanup
+  // dead code (flight leak → all checks after the first silently no-opped).
+  if (flight) return;
+  flight = { token: 0 };
   try {
-    await check(token);
+    await performCheck();
   } finally {
-    if (flight === token) flight = null;
+    flight = null;
   }
 }
 
