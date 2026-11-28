@@ -4,6 +4,7 @@ import type { ChatRow } from "../types";
 import { ApprovalPanel } from "./ApprovalPanel";
 import { Composer } from "./Composer";
 import { TranscriptRow } from "./Transcript";
+import { UpdateBanner } from "./UpdateBanner";
 import { ArrowDownIcon, Spinner } from "./icons";
 
 const FOLLOW_THRESHOLD = 80;
@@ -189,6 +190,7 @@ export function ChatView() {
 
   return (
     <main className="relative flex min-w-0 flex-1 flex-col bg-surface">
+      <UpdateBanner />
       <header className="app-drag flex h-12 shrink-0 items-center justify-center border-b border-border px-6">
         <span className="truncate text-sm font-medium text-ink-700">
           {activeId ? title || "New chat" : "New chat"}

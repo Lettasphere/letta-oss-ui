@@ -233,7 +233,32 @@ export type AppEvent =
   | { type: "approval.requested"; conversationId: string; agentId?: string; request: ApprovalRequest }
   | { type: "approval.resolved"; conversationId: string; requestId: string }
   | { type: "conversation.updated"; conversation: ConversationSummary }
+  | { type: "update.state"; snapshot: UpdateSnapshot }
   | { type: "menu"; command: "new-chat" | "settings" };
+
+/**
+ * Update-checker snapshot (Phase 1, manual browser flow — v2r4 contract).
+ * One object, one seq, full broadcast on every observable mutation.
+ * `dismissedFor` is the tag the user dismissed (null = not dismissed);
+ * strict process-lifetime dismissal — never persisted, reset on restart.
+ */
+export type UpdateSnapshot = {
+  /** Monotonic; subscribers discard events/snapshots with seq <= highest seen. */
+  seq: number;
+  state: "idle" | "checking" | "available" | "up-to-date" | "error" | "unsupported";
+  /** Last SUCCESSFULLY observed release tag (null before any success). */
+  version: string | null;
+  /** Canonical release-page URL for `version` (constructed, never from API fields). */
+  releaseUrl: string | null;
+  /** Wall-clock of last check attempt (any outcome). */
+  lastAttemptAt: number | null;
+  /** Wall-clock of last check that completed and validated. */
+  lastSuccessfulCheckAt: number | null;
+  /** Error of the last attempt (null iff the last attempt succeeded). */
+  lastCheckError: string | null;
+  /** The tag the user dismissed the banner for (null = not dismissed). */
+  dismissedFor: string | null;
+};
 
 /** Renderer -> main requests. Every method is an `ipcRenderer.invoke` round trip. */
 export type ExecutionMode = "local" | "remote-env" | "cloud-only";
@@ -294,6 +319,11 @@ export type AppRequests = {
   getRemoteHandover(): import("./libs/remote-env.js").HandoverState;
   getRemoteAuth(): import("./libs/remote-env.js").RemoteAuthState;
   openRemoteAuthUrl(input: { url: string }): boolean;
+  getUpdateSnapshot(): UpdateSnapshot;
+  getAppVersion(): string;
+  checkForUpdates(): Promise<UpdateSnapshot>;
+  dismissUpdateBanner(): UpdateSnapshot;
+  openReleasePage(): Promise<boolean>;
   adoptRemoteEnv(): import("./libs/remote-env.js").AdoptedState;
   updateSettings(update: SettingsUpdate): AppSettings;
   listSavedConnections(): SavedConnection[];

@@ -10,6 +10,7 @@ import { execFileSync, execSync } from "node:child_process";
 import { join } from "node:path";
 import { broadcast, registerIpc } from "./ipc.js";
 import { disconnect, initRuntime } from "./libs/runtime.js";
+import { initUpdateChecker } from "./libs/update-checker.js";
 import type { AppEvent } from "./types.js";
 import { DEV_URL, getIconPath, getPreloadPath, getUIPath, isAppUrl, isDev } from "./util.js";
 
@@ -183,6 +184,7 @@ if (!app.requestSingleInstanceLock()) {
     Menu.setApplicationMenu(buildMenu());
     registerIpc();
     initRuntime(broadcast);
+    initUpdateChecker(broadcast);
     createWindow();
 
     app.on("activate", () => {
