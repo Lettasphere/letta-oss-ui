@@ -88,10 +88,20 @@ function publicSnapshot(): UpdateSnapshot {
   return pub;
 }
 
-/** Parse "v1.2.3" → [1,2,3]; null if malformed. */
+/**
+ * Parse a version to numeric segments. Accepts BOTH forms:
+ * - Release TAGS ("v1.2.3") — strict v-required, from GitHub
+ * - INSTALLED versions ("1.2.3" / "0.3.1") — app.getVersion() has NO v
+ *   prefix (it reads package.json). The v1 bug: the tag regex was applied
+ *   to both sides, so the installed version always parsed null and
+ *   isNewer returned false — every release read "up to date" (Harry's
+ *   on-device report, Nov 28: 0.3.1 install + 0.3.2 live = "matches or
+ *   is older").
+ */
 function versionSegments(tag: string): number[] | null {
-  if (!TAG_RE.test(tag)) return null;
-  return tag.slice(1).split(".").map(Number);
+  const body = tag.startsWith("v") ? tag.slice(1) : tag;
+  if (!/^\d+\.\d+\.\d+$/.test(body)) return null;
+  return body.split(".").map(Number);
 }
 
 /** Strict comparison: positive iff a > b. Null segments = incomparable. */
@@ -255,6 +265,22 @@ export async function manualCheck(): Promise<UpdateSnapshot> {
   return publicSnapshot();
 }
 
+/**
+ * Opportunistic check on navigation (Harry, Nov 28: "some sort of check
+ * every time there's a conversation or agent switch"). Same throttle and
+ * backoff gates as manual — navigation frequency would otherwise hammer
+ * the API. Fire-and-forget: the state lands via the broadcast; the caller
+ * never awaits.
+ */
+export function checkOnNavigation(): void {
+  if (!initialized || state.state === "unsupported") return;
+  const now = Date.now();
+  if (now < state.retryNotBefore) return;
+  if (now - lastManualCheckAt < MANUAL_THROTTLE_MS) return;
+  lastManualCheckAt = now;
+  void startCheck();
+}
+
 async function startCheck(): Promise<void> {
   // Single-flight: an in-flight check owns the mutation slot. performCheck
   // assigns the token (last write wins); the wrapper's finally clears the
@@ -279,6 +305,17 @@ export function dismissUpdateBanner(): UpdateSnapshot {
 /** Snapshot for subscribe-first renderer protocol. */
 export function getUpdateSnapshot(): UpdateSnapshot {
   return publicSnapshot();
+}
+
+/**
+ * Stale-install advisory: GitHub's selected latest is NOT newer than the
+ * installed version (equal or older). The v2r3 #2 case — a misordered
+ * publish or an installed-never-published version. Shown on the banner
+ * (main screen) and Settings, per Harry's Nov 28 report: the advisory
+ * belonged on the main screen, not buried in Settings.
+ */
+export function isStaleInstall(): boolean {
+  return state.state === "up-to-date" && state.version !== null && state.version !== null;
 }
 
 /**

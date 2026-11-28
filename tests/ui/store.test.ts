@@ -120,6 +120,7 @@ function createBridge() {
       lastAttemptAt: null, lastSuccessfulCheckAt: null, lastCheckError: null, dismissedFor: null,
     }),
     checkForUpdates: vi.fn().mockResolvedValue(null),
+    checkForUpdatesOnNavigation: vi.fn(),
     dismissUpdateBanner: vi.fn().mockReturnThis(),
     openReleasePage: vi.fn().mockResolvedValue(false),
   } satisfies Record<keyof AppBridge, unknown>;

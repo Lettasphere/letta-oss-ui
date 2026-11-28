@@ -75,6 +75,7 @@ const METHODS = [
   "getUpdateSnapshot",
   "getAppVersion",
   "checkForUpdates",
+  "checkForUpdatesOnNavigation",
   "dismissUpdateBanner",
   "openReleasePage",
 ] as const satisfies readonly (keyof AppRequests)[];

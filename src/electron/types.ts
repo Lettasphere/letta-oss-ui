@@ -322,6 +322,7 @@ export type AppRequests = {
   getUpdateSnapshot(): UpdateSnapshot;
   getAppVersion(): string;
   checkForUpdates(): Promise<UpdateSnapshot>;
+  checkForUpdatesOnNavigation(): void;
   dismissUpdateBanner(): UpdateSnapshot;
   openReleasePage(): Promise<boolean>;
   adoptRemoteEnv(): import("./libs/remote-env.js").AdoptedState;

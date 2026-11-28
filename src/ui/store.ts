@@ -568,6 +568,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   selectAgent: async (agentId) => {
+    // Opportunistic update check on agent switch (Harry, Nov 28) —
+    // fire-and-forget, throttled in main.
+    try {
+      window.bridge.checkForUpdatesOnNavigation();
+    } catch {
+      /* bridge optional in tests */
+    }
     // Idempotent: re-selecting the already-loaded agent must not wipe to a
     // loading state (stray re-clicks / restore races looked like the app
     // resetting on conversation click).
@@ -682,6 +689,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   openChat: (conversationId) => {
+    // Opportunistic update check on conversation switch (Harry, Nov 28) —
+    // fire-and-forget, throttled in main.
+    try {
+      window.bridge.checkForUpdatesOnNavigation();
+    } catch {
+      /* bridge optional in tests */
+    }
     // Persist the agent's last-open conversation for switch-restore.
     const currentAgent = get().agentId;
     if (currentAgent && conversationId) {
