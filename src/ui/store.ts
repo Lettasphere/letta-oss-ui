@@ -270,7 +270,7 @@ const CLEARED = {
   // APP process, not the Letta connection (main-process owned).
   update: {
     seq: -1, state: "idle", version: null, releaseUrl: null,
-    lastAttemptAt: null, lastSuccessfulCheckAt: null, lastCheckError: null, dismissedFor: null,
+    lastAttemptAt: null, lastSuccessfulCheckAt: null, lastCheckError: null, dismissedFor: null, observedOlderThanInstalled: false,
   },
   agents: [],
   agentsLoaded: false,

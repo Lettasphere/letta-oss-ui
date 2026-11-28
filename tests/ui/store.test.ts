@@ -117,7 +117,7 @@ function createBridge() {
     getAppVersion: vi.fn().mockReturnValue("0.3.0"),
     getUpdateSnapshot: vi.fn().mockReturnValue({
       seq: 0, state: "unsupported", version: null, releaseUrl: null,
-      lastAttemptAt: null, lastSuccessfulCheckAt: null, lastCheckError: null, dismissedFor: null,
+      lastAttemptAt: null, lastSuccessfulCheckAt: null, lastCheckError: null, dismissedFor: null, observedOlderThanInstalled: false,
     }),
     checkForUpdates: vi.fn().mockResolvedValue(null),
     checkForUpdatesOnNavigation: vi.fn(),

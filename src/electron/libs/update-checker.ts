@@ -70,6 +70,7 @@ function freshState(): State {
     lastSuccessfulCheckAt: null,
     lastCheckError: null,
     dismissedFor: null,
+    observedOlderThanInstalled: false,
     retryNotBefore: 0,
   };
 }
@@ -104,6 +105,18 @@ function versionSegments(tag: string): number[] | null {
   return body.split(".").map(Number);
 }
 
+/** Strict comparison: positive iff a < b. Null segments = incomparable. */
+function isOlder(candidate: string, installed: string): boolean {
+  const a = versionSegments(candidate);
+  const b = versionSegments(installed);
+  if (!a || !b) return false;
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const d = (a[i] ?? 0) - (b[i] ?? 0);
+    if (d !== 0) return d < 0;
+  }
+  return false;
+}
+
 /** Strict comparison: positive iff a > b. Null segments = incomparable. */
 function isNewer(candidate: string, installed: string): boolean {
   const a = versionSegments(candidate);
@@ -124,7 +137,7 @@ function derive(
   observed: { tag: string } | null,
   attempt: { error: string | null; at: number },
   installed: string,
-): Pick<State, "state" | "version" | "releaseUrl" | "lastAttemptAt" | "lastSuccessfulCheckAt" | "lastCheckError"> {
+): Pick<State, "state" | "version" | "releaseUrl" | "lastAttemptAt" | "lastSuccessfulCheckAt" | "lastCheckError" | "observedOlderThanInstalled"> {
   const observedTag = observed?.tag ?? null;
   const error = attempt.error;
   return {
@@ -133,6 +146,11 @@ function derive(
     lastAttemptAt: attempt.at,
     lastSuccessfulCheckAt: observed ? attempt.at : null,
     lastCheckError: error,
+    // The advisory gate (Uncia #30 rider): true ONLY when the observed
+    // release is STRICTLY older than installed — the misordered-publish /
+    // never-published-install anomaly. The EQUAL case (healthy, current
+    // install) is normal and must NOT banner on the main screen.
+    observedOlderThanInstalled: observed ? isOlder(observed.tag, installed) : false,
     state: observed
       ? isNewer(observed.tag, installed)
         ? "available"
@@ -314,10 +332,6 @@ export function getUpdateSnapshot(): UpdateSnapshot {
  * (main screen) and Settings, per Harry's Nov 28 report: the advisory
  * belonged on the main screen, not buried in Settings.
  */
-export function isStaleInstall(): boolean {
-  return state.state === "up-to-date" && state.version !== null && state.version !== null;
-}
-
 /**
  * Open the canonical release page. Reads the AUTHORITATIVE observed tag —
  * renderer input can't select a URL (v2r2 #3, v2r4 fold-in).

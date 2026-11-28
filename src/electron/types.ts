@@ -258,6 +258,13 @@ export type UpdateSnapshot = {
   lastCheckError: string | null;
   /** The tag the user dismissed the banner for (null = not dismissed). */
   dismissedFor: string | null;
+  /**
+   * True ONLY when the observed release is strictly OLDER than installed —
+   * the misordered-publish / never-published-install anomaly (v2r3 #2).
+   * The advisory banner gates on this; the equal case (healthy install)
+   * is normal and never banners (Uncia #30 rider).
+   */
+  observedOlderThanInstalled: boolean;
 };
 
 /** Renderer -> main requests. Every method is an `ipcRenderer.invoke` round trip. */

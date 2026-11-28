@@ -19,8 +19,10 @@ export function UpdateBanner() {
   // the advisory line (matched/older install — Harry: it belongs on the
   // main screen, not just Settings). Both dismissable per-version.
   const isUpdate = update.state === "available" && update.version !== null;
-  const isAdvisory =
-    update.state === "up-to-date" && update.version !== null && update.version !== undefined;
+  // The advisory gates on observedOlderThanInstalled (Uncia #30 rider):
+  // strictly-older-observed only — the anomalous misordered-publish case.
+  // The equal case (healthy current install) is normal, never banners.
+  const isAdvisory = update.state === "up-to-date" && update.observedOlderThanInstalled;
   const dismissed = update.dismissedFor === update.version;
   const show = (isUpdate || isAdvisory) && !dismissed;
   if (!show) return null;
